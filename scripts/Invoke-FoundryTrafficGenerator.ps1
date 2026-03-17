@@ -208,23 +208,37 @@ function Find-FoundryAIServicesAccounts {
     foreach ($sub in $Subscriptions) {
         Write-Host "  Scanning subscription: $($sub.name)..." -ForegroundColor Gray
 
-        $cogAccounts = az cognitiveservices account list `
+        # Use 'az resource list' instead of 'az cognitiveservices account list'
+        # to avoid a deserialization bug in certain Azure CLI versions on Linux.
+        $resources = az resource list `
             --subscription $sub.id `
-            --query "[?kind=='AIServices'].{name:name, resourceGroup:resourceGroup, endpoint:properties.endpoint, id:id}" `
+            --resource-type "Microsoft.CognitiveServices/accounts" `
+            --query "[?kind=='AIServices'].{name:name, resourceGroup:resourceGroup, id:id}" `
             -o json 2>$null
 
         $parsed = $null
-        if ($cogAccounts) {
-            try { $parsed = $cogAccounts | ConvertFrom-Json } catch { $parsed = $null }
+        if ($resources) {
+            try { $parsed = $resources | ConvertFrom-Json } catch { $parsed = $null }
         }
 
         if ($parsed -and @($parsed).Count -gt 0) {
             foreach ($acct in $parsed) {
-                Write-Debug "Found AIServices account: $($acct.name) | Endpoint: $($acct.endpoint) | RG: $($acct.resourceGroup)"
+                # Retrieve the endpoint via account show (reliable across CLI versions)
+                $endpoint = $null
+                $endpointJson = az cognitiveservices account show `
+                    --name $acct.name `
+                    --resource-group $acct.resourceGroup `
+                    --subscription $sub.id `
+                    --query "properties.endpoint" -o tsv 2>$null
+                if ($LASTEXITCODE -eq 0 -and $endpointJson) {
+                    $endpoint = $endpointJson.Trim()
+                }
+
+                Write-Debug "Found AIServices account: $($acct.name) | Endpoint: $endpoint | RG: $($acct.resourceGroup)"
                 $accounts += [PSCustomObject]@{
                     Name           = $acct.name
                     ResourceGroup  = $acct.resourceGroup
-                    Endpoint       = $acct.endpoint
+                    Endpoint       = $endpoint
                     Id             = $acct.id
                     SubscriptionId = $sub.id
                     Subscription   = $sub.name
