@@ -5,11 +5,16 @@
 //
 // Prerequisites:
 //   - An existing Log Analytics workspace
-//   - After deployment, run scripts/Assign-MonitoringRbac.ps1 to grant RBAC
+//   - azd CLI installed (https://aka.ms/azd)
 //
-// Deploy:
-//   az group create -n rg-ai-monitoring -l swedencentral
-//   az deployment group create -g rg-ai-monitoring -f main.bicep --parameters main.bicepparam
+// Deploy with azd (recommended):
+//   azd env set AZURE_LOG_ANALYTICS_WORKSPACE_ID "/subscriptions/.../workspaces/{name}"
+//   azd env set AZURE_ALERT_EMAIL "team@contoso.com"
+//   azd env set AZURE_TARGET_SUBSCRIPTION_IDS "sub1,sub2"
+//   azd up
+//
+// Deploy manually (alternative):
+//   ./scripts/Deploy-MonitoringInfra.ps1 -LogAnalyticsWorkspaceId "..." -AlertEmail "..." -TargetSubscriptionIds @("...")
 //
 // Parameters:
 //   MANDATORY (no defaults — must be provided):
@@ -30,10 +35,10 @@ targetScope = 'resourceGroup'
 @description('Optional. Azure region for Function App and Storage Account. DCE, DCRs, and App Insights are automatically placed in the Log Analytics workspace region. Default: swedencentral')
 param location string = 'swedencentral'
 
-@description('Optional. Naming prefix (lowercase, 2-8 chars). Default: heaip')
+@description('Naming prefix (lowercase, 2-8 chars).')
 @minLength(2)
 @maxLength(8)
-param prefix string = 'heaip'
+param prefix string
 
 @description('Optional. Environment tag. Default: DEV')
 @allowed(['DEV', 'TEST', 'PROD'])
@@ -107,9 +112,17 @@ module alerts 'modules/alerts.bicep' = {
   }
 }
 
-// Outputs for the RBAC script
-output functionAppPrincipalId string = functionApp.outputs.functionAppPrincipalId
-output dcrQuotaSnapshotId string = dataCollection.outputs.dcrQuotaSnapshotId
-output dcrDeploymentConfigId string = dataCollection.outputs.dcrDeploymentConfigId
-output dcrTokenUsageId string = dataCollection.outputs.dcrTokenUsageId
-output functionAppName string = functionApp.outputs.functionAppName
+// Outputs for azd environment variables and RBAC scripts
+output AZURE_FUNCTION_APP_PRINCIPAL_ID string = functionApp.outputs.functionAppPrincipalId
+output AZURE_FUNCTION_APP_NAME string = functionApp.outputs.functionAppName
+output AZURE_DCR_QUOTA_SNAPSHOT_ID string = dataCollection.outputs.dcrQuotaSnapshotId
+output AZURE_DCR_DEPLOYMENT_CONFIG_ID string = dataCollection.outputs.dcrDeploymentConfigId
+output AZURE_DCR_TOKEN_USAGE_ID string = dataCollection.outputs.dcrTokenUsageId
+output AZURE_DCE_ENDPOINT string = dataCollection.outputs.dceEndpoint
+output AZURE_DCR_QUOTA_SNAPSHOT_IMMUTABLE_ID string = dataCollection.outputs.dcrQuotaSnapshotImmutableId
+output AZURE_DCR_DEPLOYMENT_CONFIG_IMMUTABLE_ID string = dataCollection.outputs.dcrDeploymentConfigImmutableId
+output AZURE_DCR_TOKEN_USAGE_IMMUTABLE_ID string = dataCollection.outputs.dcrTokenUsageImmutableId
+output AZURE_STORAGE_ACCOUNT_NAME string = functionApp.outputs.storageAccountName
+output AZURE_STORAGE_TABLE_ENDPOINT string = functionApp.outputs.storageTableEndpoint
+output AZURE_APP_INSIGHTS_CONNECTION_STRING string = functionApp.outputs.appInsightsConnectionString
+output AZURE_LOG_ANALYTICS_WORKSPACE_ID string = logAnalyticsWorkspaceId

@@ -137,10 +137,10 @@ if ($SkipRbac) {
 } else {
     Write-Host "`n=== Step 3/3: RBAC assignment ===" -ForegroundColor Cyan
 
-    $principalId = $deployOutput.properties.outputs.functionAppPrincipalId.value
-    $dcrQuota    = $deployOutput.properties.outputs.dcrQuotaSnapshotId.value
-    $dcrDeploy   = $deployOutput.properties.outputs.dcrDeploymentConfigId.value
-    $dcrToken    = $deployOutput.properties.outputs.dcrTokenUsageId.value
+    $principalId = $deployOutput.properties.outputs.aZURE_FUNCTION_APP_PRINCIPAL_ID.value
+    $dcrQuota    = $deployOutput.properties.outputs.aZURE_DCR_QUOTA_SNAPSHOT_ID.value
+    $dcrDeploy   = $deployOutput.properties.outputs.aZURE_DCR_DEPLOYMENT_CONFIG_ID.value
+    $dcrToken    = $deployOutput.properties.outputs.aZURE_DCR_TOKEN_USAGE_ID.value
 
     Write-Host "  Function App principal ID: $principalId"
     Write-Host "  Target subscriptions: $($TargetSubscriptionIds -join ', ')"
@@ -161,7 +161,9 @@ if ($SkipRbac) {
 
 Write-Host "`n=== Deployment complete ===" -ForegroundColor Green
 Write-Host "  Resource group:    $ResourceGroupName"
-Write-Host "  Function App:      $($deployOutput.properties.outputs.functionAppName.value)"
-Write-Host "  Principal ID:      $($deployOutput.properties.outputs.functionAppPrincipalId.value)"
+Write-Host "  Function App:      $($deployOutput.properties.outputs.aZURE_FUNCTION_APP_NAME.value)"
+Write-Host "  Principal ID:      $($deployOutput.properties.outputs.aZURE_FUNCTION_APP_PRINCIPAL_ID.value)"
 Write-Host ""
-Write-Host "  Next step: deploy the Function App code (Python functions)."
+Write-Host "  Next steps:"
+Write-Host "    - Deploy code: azd deploy (or func azure functionapp publish)"
+Write-Host "    - Local dev:   Run Assign-DevRbac.ps1 then func host start"

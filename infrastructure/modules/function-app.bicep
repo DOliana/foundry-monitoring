@@ -96,7 +96,7 @@ resource flexPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
 resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: '${prefix}-func-mon-${short}'
   location: location
-  tags: tags
+  tags: union(tags, { 'azd-service-name': 'monitor' })
   kind: 'functionapp,linux'
   identity: {
     type: 'SystemAssigned'
@@ -176,3 +176,5 @@ output functionAppName string = functionApp.name
 output functionAppPrincipalId string = functionApp.identity.principalId
 output appInsightsId string = appInsights.id
 output storageAccountName string = storageAccount.name
+output storageTableEndpoint string = storageAccount.properties.primaryEndpoints.table
+output appInsightsConnectionString string = appInsights.properties.ConnectionString

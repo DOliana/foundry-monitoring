@@ -40,21 +40,33 @@
 
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [Parameter(Mandatory)]
-    [string]$PrincipalId,
+    [string]$PrincipalId = $env:AZURE_FUNCTION_APP_PRINCIPAL_ID,
 
-    [Parameter(Mandatory)]
-    [string[]]$TargetSubscriptionIds,
+    [string[]]$TargetSubscriptionIds = @(
+        if ($env:AZURE_TARGET_SUBSCRIPTION_IDS) {
+            $env:AZURE_TARGET_SUBSCRIPTION_IDS -split ',' | Where-Object { $_ }
+        } elseif ($env:AZURE_SUBSCRIPTION_ID) {
+            $env:AZURE_SUBSCRIPTION_ID
+        }
+    ),
 
-    [Parameter(Mandatory)]
-    [string]$LogAnalyticsWorkspaceResourceId,
+    [string]$LogAnalyticsWorkspaceResourceId = $env:AZURE_LOG_ANALYTICS_WORKSPACE_ID,
 
-    [Parameter(Mandatory)]
-    [string[]]$DcrResourceIds
+    [string[]]$DcrResourceIds = @(
+        $env:AZURE_DCR_QUOTA_SNAPSHOT_ID,
+        $env:AZURE_DCR_DEPLOYMENT_CONFIG_ID,
+        $env:AZURE_DCR_TOKEN_USAGE_ID
+    ).Where({ $_ })
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Validate required parameters
+if (-not $PrincipalId)                    { throw 'PrincipalId is required. Pass it as a parameter or set AZURE_FUNCTION_APP_PRINCIPAL_ID.' }
+if (-not $TargetSubscriptionIds.Count)    { throw 'TargetSubscriptionIds is required. Pass it as a parameter, set AZURE_TARGET_SUBSCRIPTION_IDS, or ensure AZURE_SUBSCRIPTION_ID is set.' }
+if (-not $LogAnalyticsWorkspaceResourceId){ throw 'LogAnalyticsWorkspaceResourceId is required. Pass it as a parameter or set AZURE_LOG_ANALYTICS_WORKSPACE_ID.' }
+if (-not $DcrResourceIds.Count)           { throw 'DcrResourceIds is required. Pass them as a parameter or set AZURE_DCR_QUOTA_SNAPSHOT_ID, AZURE_DCR_DEPLOYMENT_CONFIG_ID, AZURE_DCR_TOKEN_USAGE_ID.' }
 
 # Built-in role definition IDs
 $roles = @{

@@ -15,19 +15,44 @@ Deploys the monitoring infrastructure for collecting quota, deployment config, a
 
 ## Prerequisites
 
-- An **existing Log Analytics workspace** — its full resource ID is required as a parameter
+- An **existing Log Analytics workspace** — its full resource ID is required
+- [Azure Developer CLI (`azd`)](https://aka.ms/azd) installed
 - Azure CLI with Bicep support (`az bicep version` ≥ 0.30)
-- Permissions: Contributor on the target resource group
+- Permissions: Contributor on the target resource group, User Access Administrator for RBAC
 
-## Deploy
+## Deploy with azd (recommended)
 
 ```bash
-# 1. Create resource group
-az group create -n rg-ai-monitoring -l swedencentral
+# One-time setup — azd will prompt for required parameters
+azd init
+azd up
+```
 
-## Deploy (recommended — single script)
+`azd` automatically prompts for the two mandatory Bicep parameters (`logAnalyticsWorkspaceId` and `alertEmail`) if they aren't already set. You can also pre-set them:
 
-The deployment script handles resource group creation, Bicep deployment, and RBAC assignment in one call:
+```bash
+azd env set AZURE_LOG_ANALYTICS_WORKSPACE_ID "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{name}"
+azd env set AZURE_ALERT_EMAIL "platformteam@contoso.com"
+
+# Optional — defaults to the deployment subscription if not set
+# azd env set AZURE_TARGET_SUBSCRIPTION_IDS "sub-id-1,sub-id-2,sub-id-3"
+```
+
+`azd up` runs `azd provision` + `azd deploy`. The post-provision hook automatically:
+1. Assigns RBAC roles to the Function App's managed identity
+2. Assigns RBAC roles to your local developer identity (for `func host start`)
+3. Generates `src/local.settings.json` from Bicep outputs
+
+### Local development after azd provision
+
+```bash
+cd src
+func host start
+```
+
+No extra setup needed — `local.settings.json` and RBAC are configured by the post-provision hook.
+
+## Deploy manually (alternative)
 
 ```powershell
 ./scripts/Deploy-MonitoringInfra.ps1 `
@@ -47,52 +72,32 @@ Optional parameters (with defaults):
 | `-MaxParallelSubs` | `5` | Concurrency limit |
 | `-SkipRbac` | `$false` | Skip RBAC step (for re-deploys) |
 
-Use `-WhatIf` to preview all changes before applying.
-
-## Deploy (manual — step by step)
-
-If you prefer to run each step separately:
-
-```bash
-# 1. Create resource group
-az group create -n rg-ai-monitoring -l swedencentral
-
-# 2. Deploy infrastructure
-az deployment group create \
-  -g rg-ai-monitoring \
-  -f main.bicep \
-  --parameters main.bicepparam
-
-# 3. Capture outputs for RBAC script
-PRINCIPAL_ID=$(az deployment group show -g rg-ai-monitoring -n main --query properties.outputs.functionAppPrincipalId.value -o tsv)
-DCR_QUOTA=$(az deployment group show -g rg-ai-monitoring -n main --query properties.outputs.dcrQuotaSnapshotId.value -o tsv)
-DCR_DEPLOY=$(az deployment group show -g rg-ai-monitoring -n main --query properties.outputs.dcrDeploymentConfigId.value -o tsv)
-DCR_TOKEN=$(az deployment group show -g rg-ai-monitoring -n main --query properties.outputs.dcrTokenUsageId.value -o tsv)
-
-# 4. Assign RBAC
-```
+Then set up local development manually:
 
 ```powershell
-./scripts/Assign-MonitoringRbac.ps1 `
-    -PrincipalId $PRINCIPAL_ID `
-    -TargetSubscriptionIds @("sub-id-1", "sub-id-2", "sub-id-3") `
-    -LogAnalyticsWorkspaceResourceId "/subscriptions/.../workspaces/my-ws" `
-    -DcrResourceIds @($DCR_QUOTA, $DCR_DEPLOY, $DCR_TOKEN)
+# Assign developer RBAC
+./scripts/Assign-DevRbac.ps1 -TargetSubscriptionIds @("sub-id-1") -LogAnalyticsWorkspaceResourceId "..." -StorageAccountName "..."
+
+# Create local.settings.json (or copy from Azure portal)
+./scripts/Create-LocalSettings.ps1
 ```
 
 ## File structure
 
 ```
 infrastructure/
-├── main.bicep                  # Orchestrator
-├── main.bicepparam             # Parameters (edit before deploying)
+├── main.bicep                  # Orchestrator (azd prompts for mandatory params)
 ├── modules/
+│   ├── custom-tables.bicep     # 3 custom Log Analytics tables
 │   ├── data-collection.bicep   # DCE + 3 DCRs
 │   ├── function-app.bicep      # Storage + App Insights + Function App
 │   └── alerts.bicep            # Alert rules + action group
 ├── scripts/
-│   ├── Deploy-MonitoringInfra.ps1 # One-command deploy + RBAC (recommended)
-│   └── Assign-MonitoringRbac.ps1  # Cross-subscription RBAC assignments
+│   ├── Post-Provision.ps1        # azd postprovision hook (orchestrates steps below)
+│   ├── Assign-MonitoringRbac.ps1  # RBAC for Function App managed identity
+│   ├── Assign-DevRbac.ps1         # RBAC for local developer identity
+│   ├── Create-LocalSettings.ps1   # Generates src/local.settings.json
+│   └── Deploy-MonitoringInfra.ps1 # Manual deploy alternative (no azd)
 └── README.md                   # This file
 ```
 
