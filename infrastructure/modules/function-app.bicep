@@ -110,8 +110,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
           type: 'blobContainer'
           value: '${storageAccount.properties.primaryEndpoints.blob}deploymentpackage'
           authentication: {
-            type: 'StorageAccountConnectionString'
-            storageAccountConnectionStringName: 'AzureWebJobsStorage'
+            type: 'SystemAssignedIdentity'
           }
         }
       }
@@ -126,17 +125,50 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
     }
     siteConfig: {
       appSettings: [
-        { name: 'AzureWebJobsStorage', value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value}' }
+        { name: 'AzureWebJobsStorage__accountName', value: storageAccount.name }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
         { name: 'DCE_ENDPOINT', value: dceEndpoint }
         { name: 'DCR_QUOTA_SNAPSHOT_IMMUTABLE_ID', value: dcrQuotaSnapshotImmutableId }
         { name: 'DCR_DEPLOYMENT_CONFIG_IMMUTABLE_ID', value: dcrDeploymentConfigImmutableId }
         { name: 'DCR_TOKEN_USAGE_IMMUTABLE_ID', value: dcrTokenUsageImmutableId }
         { name: 'WATERMARK_TABLE_NAME', value: watermarkTable.name }
-        { name: 'WATERMARK_STORAGE_CONNECTION', value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value}' }
+        { name: 'WATERMARK_STORAGE_ENDPOINT', value: storageAccount.properties.primaryEndpoints.table }
         { name: 'MAX_PARALLEL_SUBS', value: string(maxParallelSubs) }
       ]
     }
+  }
+}
+
+// ─── RBAC: Storage Blob Data Owner (for AzureWebJobsStorage & deployment) ────
+resource storageBlobDataOwner 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccount.id, functionApp.id, 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b')
+  scope: storageAccount
+  properties: {
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b')
+  }
+}
+
+// ─── RBAC: Storage Table Data Contributor (for watermark table) ──────────────
+resource storageTableDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccount.id, functionApp.id, '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
+  scope: storageAccount
+  properties: {
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
+  }
+}
+
+// ─── RBAC: Storage Queue Data Contributor (for Azure Functions runtime) ──────
+resource storageQueueDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccount.id, functionApp.id, '974c5e8b-45b9-4653-ba55-5f855dd0fb88')
+  scope: storageAccount
+  properties: {
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '974c5e8b-45b9-4653-ba55-5f855dd0fb88')
   }
 }
 
