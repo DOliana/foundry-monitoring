@@ -90,6 +90,9 @@ This document maps each operation in the monitoring code to minimum required Azu
 
 | Component | Role | Resource Scope | Notes |
 |-----------|------|-----------------|-------|
+| **Function App (Storage — Blobs)** | `Storage Blob Data Owner` | Storage Account | Deployment packages + AzureWebJobsStorage runtime |
+| **Function App (Storage — Tables)** | `Storage Table Data Contributor` | Storage Account | Watermark table read/write |
+| **Function App (Storage — Queues)** | `Storage Queue Data Contributor` | Storage Account | Azure Functions runtime (timer triggers, internal queues) |
 | **Notebook (Query Logs)** | Log Analytics Data Reader | `/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{ws-name}` | Scoped to the **specific workspace** |
 | **Notebook (Query Metrics)** | `Monitoring Reader` (or custom) | Option 1: Subscription<br>Option 2: Individual Cognitive Services account | See Part 1B for least-privilege (Option 2 recommended) |
 | **Notebook (Query ARM)** | `Cognitive Services Usages Reader` + `Cognitive Services User` | `/subscriptions/{subscription-id}` | **Must be subscription-level** (for account enumeration + usages endpoint) |

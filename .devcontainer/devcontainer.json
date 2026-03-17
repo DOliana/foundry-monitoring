@@ -25,7 +25,7 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "pip install --upgrade pip && pip install ipykernel jupyter ipywidgets --upgrade && sudo sh -c 'echo \"deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/repos/azure-cli/ bookworm main\" > /etc/apt/sources.list.d/azure-cli.list' && sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/azure-cli.list -o Dir::Etc::sourceparts=/dev/null && sudo apt-get install -y azure-cli && npm install -g azure-functions-core-tools@4 --unsafe-perm=true",
+	"postCreateCommand": "pip install --upgrade pip && pip install ipykernel jupyter ipywidgets --upgrade && sudo sh -c 'echo \"deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/repos/azure-cli/ bookworm main\" > /etc/apt/sources.list.d/azure-cli.list' && sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/azure-cli.list -o Dir::Etc::sourceparts=/dev/null && sudo apt-get install -y azure-cli && az config set extension.dynamic_install_allow_preview=true && npm install -g azure-functions-core-tools@4 --unsafe-perm=true",
 	// Configure tool-specific properties.
 	"customizations": {
 		"vscode": {

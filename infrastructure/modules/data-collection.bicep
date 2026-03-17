@@ -77,8 +77,8 @@ resource dcrDeploymentConfig 'Microsoft.Insights/dataCollectionRules@2023-03-11'
           { name: 'TimeGenerated', type: 'datetime' }
           { name: 'subscriptionId_s', type: 'string' }
           { name: 'subscriptionName_s', type: 'string' }
-          { name: 'instanceId_s', type: 'string' }
-          { name: 'instanceName_s', type: 'string' }
+          { name: 'resourceId_s', type: 'string' }
+          { name: 'resourceName_s', type: 'string' }
           { name: 'location_s', type: 'string' }
           { name: 'kind_s', type: 'string' }
           { name: 'deploymentName_s', type: 'string' }
@@ -123,8 +123,9 @@ resource dcrTokenUsage 'Microsoft.Insights/dataCollectionRules@2023-03-11' = {
           { name: 'timestamp_t', type: 'datetime' }
           { name: 'subscriptionId_s', type: 'string' }
           { name: 'subscriptionName_s', type: 'string' }
-          { name: 'instanceId_s', type: 'string' }
-          { name: 'instanceName_s', type: 'string' }
+          { name: 'resourceId_s', type: 'string' }
+          { name: 'resourceName_s', type: 'string' }
+          { name: 'location_s', type: 'string' }
           { name: 'deploymentName_s', type: 'string' }
           { name: 'modelName_s', type: 'string' }
           { name: 'promptTokens_d', type: 'real' }

@@ -1,0 +1,7 @@
+azure-functions
+azure-identity
+azure-monitor-ingestion
+azure-monitor-query
+azure-monitor-querymetrics
+azure-data-tables
+requests

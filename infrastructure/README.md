@@ -116,8 +116,8 @@ infrastructure/
 | Column | Type | Description |
 |---|---|---|
 | `subscriptionId_s` | string | Azure subscription ID |
-| `instanceId_s` | string | Full ARM resource ID of the Cognitive Services account |
-| `instanceName_s` | string | Instance display name |
+| `resourceId_s` | string | Full ARM resource ID of the Cognitive Services account |
+| `resourceName_s` | string | Resource display name |
 | `location_s` | string | Azure region |
 | `kind_s` | string | AIServices or OpenAI |
 | `deploymentName_s` | string | Model deployment name |
@@ -134,8 +134,8 @@ infrastructure/
 |---|---|---|
 | `timestamp_t` | datetime | Start of the 5-minute interval |
 | `subscriptionId_s` | string | Azure subscription ID |
-| `instanceId_s` | string | Full ARM resource ID |
-| `instanceName_s` | string | Instance display name |
+| `resourceId_s` | string | Full ARM resource ID |
+| `resourceName_s` | string | Resource display name |
 | `deploymentName_s` | string | Model deployment name |
 | `modelName_s` | string | Model name |
 | `promptTokens_d` | real | Input tokens consumed |

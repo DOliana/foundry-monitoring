@@ -39,8 +39,8 @@ resource tableDeploymentConfig 'Microsoft.OperationalInsights/workspaces/tables@
         { name: 'TimeGenerated', type: 'dateTime' }
         { name: 'subscriptionId_s', type: 'string' }
         { name: 'subscriptionName_s', type: 'string' }
-        { name: 'instanceId_s', type: 'string' }
-        { name: 'instanceName_s', type: 'string' }
+        { name: 'resourceId_s', type: 'string' }
+        { name: 'resourceName_s', type: 'string' }
         { name: 'location_s', type: 'string' }
         { name: 'kind_s', type: 'string' }
         { name: 'deploymentName_s', type: 'string' }
@@ -68,8 +68,9 @@ resource tableTokenUsage 'Microsoft.OperationalInsights/workspaces/tables@2022-1
         { name: 'timestamp_t', type: 'dateTime' }
         { name: 'subscriptionId_s', type: 'string' }
         { name: 'subscriptionName_s', type: 'string' }
-        { name: 'instanceId_s', type: 'string' }
-        { name: 'instanceName_s', type: 'string' }
+        { name: 'resourceId_s', type: 'string' }
+        { name: 'resourceName_s', type: 'string' }
+        { name: 'location_s', type: 'string' }
         { name: 'deploymentName_s', type: 'string' }
         { name: 'modelName_s', type: 'string' }
         { name: 'promptTokens_d', type: 'real' }
