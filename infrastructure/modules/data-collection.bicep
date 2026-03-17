@@ -131,6 +131,7 @@ resource dcrTokenUsage 'Microsoft.Insights/dataCollectionRules@2023-03-11' = {
           { name: 'promptTokens_d', type: 'real' }
           { name: 'completionTokens_d', type: 'real' }
           { name: 'totalTokens_d', type: 'real' }
+          { name: 'granularity_s', type: 'string' }
         ]
       }
     }

@@ -22,6 +22,24 @@ _DEFAULT_LOOKBACK = timedelta(hours=24)
 _GRANULARITY = timedelta(minutes=5)
 
 
+def _timedelta_to_iso8601(td: timedelta) -> str:
+    """Convert a timedelta to an ISO 8601 duration string (e.g. PT5M)."""
+    total_seconds = int(td.total_seconds())
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    parts = ["PT"]
+    if hours:
+        parts.append(f"{hours}H")
+    if minutes:
+        parts.append(f"{minutes}M")
+    if seconds or not (hours or minutes):
+        parts.append(f"{seconds}S")
+    return "".join(parts)
+
+
+_GRANULARITY_ISO = _timedelta_to_iso8601(_GRANULARITY)
+
+
 def _query_metrics(
     resource_id: str,
     location: str,
@@ -118,6 +136,7 @@ def _collect(sub: dict, window_start: datetime, window_end: datetime) -> list[di
                     "promptTokens_d": values["promptTokens"],
                     "completionTokens_d": values["completionTokens"],
                     "totalTokens_d": total,
+                    "granularity_s": _GRANULARITY_ISO,
                 }
             )
 

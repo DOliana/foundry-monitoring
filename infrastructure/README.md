@@ -146,3 +146,4 @@ infrastructure/
 | `promptTokens_d` | real | Input tokens consumed |
 | `completionTokens_d` | real | Output tokens generated |
 | `totalTokens_d` | real | Total tokens |
+| `granularity_s` | string | ISO 8601 aggregation interval (e.g. PT5M) |

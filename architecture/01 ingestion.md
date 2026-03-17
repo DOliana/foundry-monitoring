@@ -192,7 +192,7 @@ Log Analytics does not support upsert, update, or delete. Every write appends ne
 // Saved function: fn_TokenUsage
 // All consumers call fn_TokenUsage() instead of the raw table
 TokenUsage_CL
-| summarize arg_max(TimeGenerated, *) by timestamp_t, subscriptionId_s, resourceId_s, deploymentName_s
+| summarize arg_max(TimeGenerated, *) by timestamp_t, subscriptionId_s, resourceId_s, deploymentName_s, granularity_s
 ```
 
 This pattern is enforced by creating saved functions for each custom table:

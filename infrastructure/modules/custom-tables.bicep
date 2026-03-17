@@ -76,6 +76,7 @@ resource tableTokenUsage 'Microsoft.OperationalInsights/workspaces/tables@2022-1
         { name: 'promptTokens_d', type: 'real' }
         { name: 'completionTokens_d', type: 'real' }
         { name: 'totalTokens_d', type: 'real' }
+        { name: 'granularity_s', type: 'string' }
       ]
     }
     retentionInDays: 90
