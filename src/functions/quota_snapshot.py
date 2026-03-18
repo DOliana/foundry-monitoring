@@ -5,8 +5,10 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
+from azure.monitor.query import LogsQueryClient, LogsQueryStatus
+
 from shared.arm import get_quota_usages, list_instances, list_subscriptions
-from shared.clients import get_ingestion_client
+from shared.clients import get_credential, get_ingestion_client
 from shared.watermark import mark_failed, mark_success, read_watermark
 
 logger = logging.getLogger(__name__)
@@ -15,6 +17,51 @@ _DCR_RULE_ID = os.environ.get("DCR_QUOTA_SNAPSHOT_IMMUTABLE_ID", "")
 _STREAM_NAME = "Custom-QuotaSnapshot_CL"
 _WATERMARK_STREAM = "quota_snapshot"
 _MAX_PARALLEL = int(os.environ.get("MAX_PARALLEL_SUBS", "5"))
+_WORKSPACE_ID = os.environ.get("LOG_ANALYTICS_WORKSPACE_ID", "")
+
+_COMPARE_FIELDS = [
+    "deployedTPM_d",
+    "maxTPM_d",
+]
+
+
+def _get_last_snapshot(sub_id: str) -> dict[tuple[str, str], dict]:
+    """Query Log Analytics for the latest quota snapshot per region/model.
+
+    Returns an empty dict if LOG_ANALYTICS_WORKSPACE_ID is not set, which
+    disables change detection and causes all rows to be written.
+    """
+    if not _WORKSPACE_ID:
+        logger.debug("Change detection disabled — no LOG_ANALYTICS_WORKSPACE_ID")
+        return {}
+
+    client = LogsQueryClient(credential=get_credential())
+    logger.debug("Querying last quota snapshot for sub %s", sub_id)
+    query = (
+        "QuotaSnapshot_CL"
+        " | where subscriptionId_s == @sub_id"
+        " | summarize arg_max(TimeGenerated, *) by region_s, model_s"
+    )
+    result = client.query_workspace(
+        _WORKSPACE_ID,
+        query,
+        timespan=timedelta(days=7),
+        additional_workspaces=None,
+        query_parameters={"sub_id": sub_id},
+    )
+
+    snapshot: dict[tuple[str, str], dict] = {}
+    if result.status == LogsQueryStatus.SUCCESS and result.tables:
+        columns = [c.name for c in result.tables[0].columns]
+        for row in result.tables[0].rows:
+            row_dict = dict(zip(columns, row))
+            key = (
+                row_dict.get("region_s", ""),
+                row_dict.get("model_s", ""),
+            )
+            snapshot[key] = row_dict
+    logger.debug("Sub %s: loaded %d previous quota snapshot rows", sub_id, len(snapshot))
+    return snapshot
 
 
 def _collect(sub: dict, now: datetime) -> list[dict]:
@@ -27,6 +74,9 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
     locations = {inst["location"] for inst in instances}
     logger.debug("Sub %s: unique locations: %s", sub_id, locations)
 
+    last_snapshot = _get_last_snapshot(sub_id)
+    logger.debug("Sub %s: loaded %d previous snapshot entries", sub_id, len(last_snapshot))
+
     rows = []
     for location in locations:
         usages = get_quota_usages(sub_id, location)
@@ -34,21 +84,31 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
         for u in usages:
             current = u.get("currentValue", 0)
             limit_val = u.get("limit", 0)
-            rows.append(
-                {
-                    "TimeGenerated": now.isoformat(),
-                    "timestamp_t": now.isoformat(),
-                    "subscriptionId_s": sub_id.lower(),
-                    "subscriptionName_s": sub_name,
-                    "region_s": location,
-                    "model_s": u.get("name", {}).get("value", ""),
-                    "deployedTPM_d": float(current),
-                    "maxTPM_d": float(limit_val),
-                    "utilizationPct_d": (
-                        round(current / limit_val * 100, 2) if limit_val > 0 else 0.0
-                    ),
-                }
-            )
+
+            row = {
+                "TimeGenerated": now.isoformat(),
+                "timestamp_t": now.isoformat(),
+                "subscriptionId_s": sub_id.lower(),
+                "subscriptionName_s": sub_name,
+                "region_s": location,
+                "model_s": u.get("name", {}).get("value", ""),
+                "deployedTPM_d": float(current),
+                "maxTPM_d": float(limit_val),
+                "utilizationPct_d": (
+                    round(current / limit_val * 100, 2) if limit_val > 0 else 0.0
+                ),
+            }
+
+            # Change detection: skip if identical to the last snapshot
+            key = (location, row["model_s"])
+            prev = last_snapshot.get(key)
+            if prev is not None and all(
+                row.get(f) == prev.get(f) for f in _COMPARE_FIELDS
+            ):
+                logger.debug("Skipping unchanged quota %s/%s", location, row["model_s"])
+                continue
+
+            rows.append(row)
     return rows
 
 
@@ -60,6 +120,11 @@ async def run() -> None:
 
     logger.debug("Resolved %d subscriptions for quota snapshot", len(subscriptions))
     logger.info("Starting quota snapshot for %d subscriptions", len(subscriptions))
+    if not _WORKSPACE_ID:
+        logger.warning(
+            "LOG_ANALYTICS_WORKSPACE_ID not set — change detection disabled, "
+            "all quota rows will be written each run"
+        )
 
     async def process_one(sub: dict) -> str:
         async with semaphore:

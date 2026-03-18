@@ -49,7 +49,8 @@ param(
     [string[]]$DcrResourceIds = @(
         $env:AZURE_DCR_QUOTA_SNAPSHOT_ID,
         $env:AZURE_DCR_DEPLOYMENT_CONFIG_ID,
-        $env:AZURE_DCR_TOKEN_USAGE_ID
+        $env:AZURE_DCR_TOKEN_USAGE_ID,
+        $env:AZURE_DCR_MODEL_CATALOG_ID
     ).Where({ $_ }),
 
     [string]$StorageAccountName = $env:AZURE_STORAGE_ACCOUNT_NAME,

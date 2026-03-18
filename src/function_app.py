@@ -1,7 +1,7 @@
 import azure.functions as func
 import logging
 
-from functions import quota_snapshot, deployment_config, token_usage
+from functions import quota_snapshot, deployment_config, token_usage, model_catalog
 
 app = func.FunctionApp()
 
@@ -28,3 +28,11 @@ async def fn_token_usage(timer: func.TimerRequest) -> None:
     if timer.past_due:
         logging.warning("fn_token_usage is past due")
     await token_usage.run()
+
+
+@app.timer_trigger(schedule="0 0 6 * * *", arg_name="timer", run_on_startup=False)
+async def fn_model_catalog(timer: func.TimerRequest) -> None:
+    """Collect available models from the model catalog daily (at 06:00 UTC)."""
+    if timer.past_due:
+        logging.warning("fn_model_catalog is past due")
+    await model_catalog.run()

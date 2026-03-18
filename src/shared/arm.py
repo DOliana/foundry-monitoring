@@ -93,3 +93,14 @@ def get_quota_usages(subscription_id: str, location: str) -> list[dict]:
     usages = _get_paginated(url, {"api-version": "2024-10-01"})
     logger.debug("Sub %s, %s: got %d quota usage records", subscription_id, location, len(usages))
     return usages
+
+
+def list_models(subscription_id: str, location: str) -> list[dict]:
+    """List all available models in a region from the Cognitive Services model catalog."""
+    url = (
+        f"{_ARM_BASE}/subscriptions/{subscription_id}"
+        f"/providers/Microsoft.CognitiveServices/locations/{location}/models"
+    )
+    models = _get_paginated(url, {"api-version": "2024-10-01"})
+    logger.debug("Sub %s, %s: got %d catalog models", subscription_id, location, len(models))
+    return models

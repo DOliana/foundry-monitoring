@@ -99,6 +99,7 @@ module functionApp 'modules/function-app.bicep' = {
     dcrQuotaSnapshotImmutableId: dataCollection.outputs.dcrQuotaSnapshotImmutableId
     dcrDeploymentConfigImmutableId: dataCollection.outputs.dcrDeploymentConfigImmutableId
     dcrTokenUsageImmutableId: dataCollection.outputs.dcrTokenUsageImmutableId
+    dcrModelCatalogImmutableId: dataCollection.outputs.dcrModelCatalogImmutableId
     maxParallelSubs: maxParallelSubs
   }
 }
@@ -118,10 +119,12 @@ output AZURE_FUNCTION_APP_NAME string = functionApp.outputs.functionAppName
 output AZURE_DCR_QUOTA_SNAPSHOT_ID string = dataCollection.outputs.dcrQuotaSnapshotId
 output AZURE_DCR_DEPLOYMENT_CONFIG_ID string = dataCollection.outputs.dcrDeploymentConfigId
 output AZURE_DCR_TOKEN_USAGE_ID string = dataCollection.outputs.dcrTokenUsageId
+output AZURE_DCR_MODEL_CATALOG_ID string = dataCollection.outputs.dcrModelCatalogId
 output AZURE_DCE_ENDPOINT string = dataCollection.outputs.dceEndpoint
 output AZURE_DCR_QUOTA_SNAPSHOT_IMMUTABLE_ID string = dataCollection.outputs.dcrQuotaSnapshotImmutableId
 output AZURE_DCR_DEPLOYMENT_CONFIG_IMMUTABLE_ID string = dataCollection.outputs.dcrDeploymentConfigImmutableId
 output AZURE_DCR_TOKEN_USAGE_IMMUTABLE_ID string = dataCollection.outputs.dcrTokenUsageImmutableId
+output AZURE_DCR_MODEL_CATALOG_IMMUTABLE_ID string = dataCollection.outputs.dcrModelCatalogImmutableId
 output AZURE_STORAGE_ACCOUNT_NAME string = functionApp.outputs.storageAccountName
 output AZURE_STORAGE_TABLE_ENDPOINT string = functionApp.outputs.storageTableEndpoint
 output AZURE_APP_INSIGHTS_CONNECTION_STRING string = functionApp.outputs.appInsightsConnectionString

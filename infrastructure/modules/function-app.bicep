@@ -25,6 +25,9 @@ param dcrDeploymentConfigImmutableId string
 @description('Immutable ID of the Token Usage DCR')
 param dcrTokenUsageImmutableId string
 
+@description('Immutable ID of the Model Catalog DCR')
+param dcrModelCatalogImmutableId string
+
 @description('Max parallel subscriptions to process concurrently')
 param maxParallelSubs int = 5
 
@@ -131,6 +134,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'DCR_QUOTA_SNAPSHOT_IMMUTABLE_ID', value: dcrQuotaSnapshotImmutableId }
         { name: 'DCR_DEPLOYMENT_CONFIG_IMMUTABLE_ID', value: dcrDeploymentConfigImmutableId }
         { name: 'DCR_TOKEN_USAGE_IMMUTABLE_ID', value: dcrTokenUsageImmutableId }
+        { name: 'DCR_MODEL_CATALOG_IMMUTABLE_ID', value: dcrModelCatalogImmutableId }
         { name: 'WATERMARK_TABLE_NAME', value: watermarkTable.name }
         { name: 'WATERMARK_STORAGE_ENDPOINT', value: storageAccount.properties.primaryEndpoints.table }
         { name: 'MAX_PARALLEL_SUBS', value: string(maxParallelSubs) }
