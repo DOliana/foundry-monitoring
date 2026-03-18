@@ -457,6 +457,88 @@ TokenUsage_CL
 
 ---
 
+## 8. Operational Monitoring (platform diagnostic logs & metrics)
+
+These queries use the **platform diagnostic data** sent via `Set-FoundryDiagnosticSettings.ps1` (AllMetrics, RequestResponse, AzureOpenAIRequestUsage, Audit). They target the standard `AzureDiagnostics` and `AzureMetrics` tables — no custom ingestion needed.
+
+### 8a. Throttling (429) timeline
+
+Dedicated view of throttled requests over time — the most actionable operational signal.
+
+```kql
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.COGNITIVESERVICES"
+| where Category == "RequestResponse"
+| where toint(ResultSignature) == 429
+| summarize
+    ThrottledRequests = count()
+    by
+    Resource = _ResourceId,
+    Bin      = bin(TimeGenerated, 5m)
+| order by Bin desc
+```
+
+### 8b. Request latency percentiles (P50 / P95 / P99)
+
+End-to-end latency distribution per API operation (e.g. `ChatCompletions_Create`), useful for SLA tracking.
+
+```kql
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.COGNITIVESERVICES"
+| where Category == "RequestResponse"
+| extend DurationMs = todouble(DurationMs)
+| where isnotempty(DurationMs)
+| summarize
+    P50  = percentile(DurationMs, 50),
+    P95  = percentile(DurationMs, 95),
+    P99  = percentile(DurationMs, 99),
+    Requests = count()
+    by
+    Resource       = _ResourceId,
+    OperationName,
+    Bin            = bin(TimeGenerated, 1h)
+| order by Bin desc
+```
+
+### 8c. Content filtering triggers
+
+Requests blocked or modified by Azure AI content safety filters.
+
+```kql
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.COGNITIVESERVICES"
+| where Category == "RequestResponse"
+| where toint(ResultSignature) == 400
+| where properties_s has "content_filter" or properties_s has "ContentFilter"
+| summarize
+    FilteredRequests = count()
+    by
+    Resource       = _ResourceId,
+    Bin            = bin(TimeGenerated, 1h)
+| order by Bin desc
+```
+
+### 8d. Platform metrics — capacity utilization over time (AzureMetrics)
+
+Uses the native `AzureMetrics` table for metrics like `ProcessedPromptTokens`, `GeneratedTokens`, `TokenTransaction`.
+
+```kql
+AzureMetrics
+| where ResourceProvider == "MICROSOFT.COGNITIVESERVICES"
+| where MetricName in ("ProcessedPromptTokens", "GeneratedTokens", "TokenTransaction")
+| summarize
+    Total = sum(Total),
+    Avg   = avg(Average),
+    Max   = max(Maximum)
+    by
+    ResourceId = _ResourceId,
+    MetricName,
+    Bin = bin(TimeGenerated, 1h)
+| order by Bin desc, ResourceId asc
+```
+
+---
+
 ## Power BI Model Guidance
 
 **Recommended relationships:**
