@@ -414,7 +414,7 @@ $succeeded    = @($allResults | Where-Object Status -eq 'success')
 $throttled    = @($allResults | Where-Object Status -eq 'throttled')
 $failed       = @($allResults | Where-Object Status -eq 'failed')
 
-$totalTokens  = ($succeeded | Measure-Object -Property Tokens -Sum).Sum
+$totalTokens  = if ($succeeded.Count -gt 0) { ($succeeded | Measure-Object -Property Tokens -Sum).Sum } else { 0 }
 $durations    = @($succeeded | ForEach-Object { $_.DurationMs } | Sort-Object)
 
 $p50 = 0; $p95 = 0; $p99 = 0; $avgMs = 0
