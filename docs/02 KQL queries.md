@@ -131,26 +131,6 @@ TokenUsage_CL
     Hour             = bin(timestamp_t, 1h)
 ```
 
-### 1c. Token Usage — daily rollup
-
-```kql
-TokenUsage_CL
-| summarize arg_max(TimeGenerated, *) by resourceId_s, deploymentName_s, timestamp_t
-| summarize
-    PromptTokens     = sum(promptTokens_d),
-    CompletionTokens = sum(completionTokens_d),
-    TotalTokens      = sum(totalTokens_d)
-    by
-    SubscriptionId   = subscriptionId_s,
-    SubscriptionName = subscriptionName_s,
-    ResourceId       = resourceId_s,
-    ResourceName     = resourceName_s,
-    Location         = location_s,
-    DeploymentName   = deploymentName_s,
-    ModelName        = modelName_s,
-    Day              = bin(timestamp_t, 1d)
-```
-
 ---
 
 ## 2. Quota Snapshot (fact table — periodic snapshot)
