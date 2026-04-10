@@ -31,13 +31,14 @@ def read_watermark(stream: str, subscription_id: str) -> datetime | None:
 def mark_success(stream: str, subscription_id: str, window_end: datetime) -> None:
     """Update watermark after successful ingestion."""
     logger.debug("Marking watermark success %s/%s at %s", stream, subscription_id, window_end.isoformat())
+    ts = window_end.isoformat()
     get_watermark_client().upsert_entity(
         {
             "PartitionKey": stream,
             "RowKey": subscription_id,
             "SubscriptionId": subscription_id,
-            "last_success_utc": window_end.isoformat(),
-            "last_attempt_utc": datetime.now(timezone.utc).isoformat(),
+            "last_success_utc": ts,
+            "last_attempt_utc": ts,
             "status": "success",
         }
     )

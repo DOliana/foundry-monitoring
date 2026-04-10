@@ -13,6 +13,7 @@ See the [Architecture Diagram](docs/Architecture.md) for a visual overview of al
 ## Open topics
 
 - Integrate cost data
+- Data in Log Analytics has a defined retention time. To not loose data, a refresh mechanism for data that rarely changes needs to be implemented. (example: quota remains constant for 30 days -> LA deletes data after 30 days -> dashboard shows "no data" -> function runs and writes snapshot )
 
 ## Acknowledgement
 
@@ -50,7 +51,7 @@ Timer-triggered functions that collect data from Azure APIs and write to custom 
 
 | Function | Schedule | Custom Table | Description |
 |----------|----------|--------------|-------------|
-| [`fn_quota_snapshot`](src/functions/quota_snapshot.py) | Every 15 min | `QuotaSnapshot_CL` | Collects subscription-level quota and usage data per region/model from the ARM `/usages` endpoint. |
+| [`fn_quota_snapshot`](src/functions/quota_snapshot.py) | Hourly (at :20) | `QuotaSnapshot_CL` | Collects subscription-level quota and usage data per region/model from the ARM `/usages` endpoint. |
 | [`fn_deployment_config`](src/functions/deployment_config.py) | Hourly (at :05) | `DeploymentConfig_CL` | Collects deployment configurations (model, SKU, capacity, rate limits) per Cognitive Services instance. |
 | [`fn_token_usage`](src/functions/token_usage.py) | Hourly (at :35) | `TokenUsage_CL` | Collects per-deployment token metrics (prompt/generated tokens) from Azure Monitor Metrics API with a 30-min delay for metric finalization. |
 | [`fn_model_catalog`](src/functions/model_catalog.py) | Daily (06:00 UTC) | `ModelCatalog_CL` | Collects available models from the Cognitive Services model catalog per region, including lifecycle and capability metadata. |

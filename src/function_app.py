@@ -6,9 +6,9 @@ from functions import quota_snapshot, deployment_config, token_usage, model_cata
 app = func.FunctionApp()
 
 
-@app.timer_trigger(schedule="0 */15 * * * *", arg_name="timer", run_on_startup=False)
+@app.timer_trigger(schedule="0 20 * * * *", arg_name="timer", run_on_startup=False)
 async def fn_quota_snapshot(timer: func.TimerRequest) -> None:
-    """Collect quota snapshots every 15 minutes."""
+    """Collect quota snapshots hourly (at :20, 15-min delay for finalization)."""
     if timer.past_due:
         logging.warning("fn_quota_snapshot is past due")
     await quota_snapshot.run()

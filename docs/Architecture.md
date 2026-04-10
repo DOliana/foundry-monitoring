@@ -15,7 +15,7 @@ flowchart TB
     end
 
     subgraph functions["Azure Functions (Flex Consumption)"]
-        FN_QUOTA["fn_quota_snapshot<br>⏱ every 15 min"]
+        FN_QUOTA["fn_quota_snapshot<br>⏱ every 1 hour"]
         FN_DEPLOY["fn_deployment_config<br>⏱ every 1 hour"]
         FN_TOKEN["fn_token_usage<br>⏱ every 1 hour"]
         FN_MODEL["fn_model_catalog<br>⏱ daily 06:00 UTC"]
@@ -130,7 +130,7 @@ flowchart TB
 
 | Function | Schedule | Source | Target Table |
 |----------|----------|--------|--------------|
-| `fn_quota_snapshot` | Every 15 min | ARM `/usages` endpoint | `QuotaSnapshot_CL` |
+| `fn_quota_snapshot` | Every 1 hour | ARM `/usages` endpoint | `QuotaSnapshot_CL` |
 | `fn_deployment_config` | Every 1 hour | ARM `/deployments` endpoint | `DeploymentConfig_CL` |
 | `fn_token_usage` | Every 1 hour (30-min delay) | Azure Monitor Metrics API | `TokenUsage_CL` |
 | `fn_model_catalog` | Daily at 06:00 UTC | ARM model catalog API | `ModelCatalog_CL` |

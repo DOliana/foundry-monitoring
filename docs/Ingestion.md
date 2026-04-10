@@ -27,7 +27,7 @@ See `Set-FoundryDiagnosticSettings.ps1` as an example on how to set this up.
 
 | Stream | Source API | Custom table | Granularity | Collection frequency |
 |---|---|---|---|---|
-| **Quota snapshots** | ARM REST `/usages` endpoint | `QuotaSnapshot_CL` | Per subscription × region × model | Every 15 minutes |
+| **Quota snapshots** | ARM REST `/usages` endpoint | `QuotaSnapshot_CL` | Per subscription × region × model | Every 1 hour |
 | **Deployment config** | ARM REST `/deployments` endpoint | `DeploymentConfig_CL` | Per instance × deployment | Every 1 hour |
 | **Token usage timeseries** | Azure Monitor Metrics API | `TokenUsage_CL` | Per instance × deployment × 5-min interval | Every 1 hour (delayed 30 min) |
 
@@ -102,11 +102,11 @@ async def ingest_token_usage(subscriptions):
 
 ```
 ┌─────────────────── Azure Function App ────────────────────────┐
-│                  (Flex Consumption, Managed Identity)          │
-│                  App setting: MAX_PARALLEL_SUBS = 5            │
+│                  (Flex Consumption, Managed Identity)         │
+│                  App setting: MAX_PARALLEL_SUBS = 5           │
 │                                                               │
 │  ┌─────────────────────────────────────────────────────────┐  │
-│  │ fn_quota_snapshot  (timer: every 15 min)                │  │
+│  │ fn_quota_snapshot  (timer: every 1 hour)                │  │
 │  │  1. Enumerate subscriptions (single ARM call)           │  │
 │  │  2. For each sub (parallel, semaphore-bound):           │  │
 │  │     a. Read per-sub watermark from Table Storage        │  │
@@ -146,7 +146,7 @@ async def ingest_token_usage(subscriptions):
 
 **Why 3 separate functions (not 1):**
 
-- **Independent schedules** — quotas change faster (15-min) than deployments (1h)
+- **Independent schedules** — allows for flexibility (quota usually changes slower than deployment configurations)
 - **Failure isolation** — if the quota API is down, token usage collection still runs
 - **Simpler debugging** — each function has its own logs, metrics, and invocation history
 
@@ -215,7 +215,7 @@ This pattern is enforced by creating saved functions for each custom table:
 
 **Scenario:** Azure Monitor Metrics API may return incomplete data for intervals that haven't fully closed yet.
 
-**Mitigation:** The `fn_token_usage` function collects data with a **30-minute delay** — it only queries for intervals ending 30+ minutes ago. This ensures all 5-minute windows have finalized before ingestion. This needs to be validated with the customer as it means dashboards show data with a 30-minute lag.
+**Mitigation:** The `fn_token_usage` function collects data with a **30-minute delay** — it only queries for intervals ending 30+ minutes ago. This ensures all 5-minute windows have finalized before ingestion. This needs to be validated as it means dashboards show data with a 30-minute lag.
 
 #### Challenge 4: Ingestion API partial batch failure
 
@@ -231,12 +231,12 @@ A table in **Azure Table Storage** (same storage account used by the Function Ap
 
 | PartitionKey | RowKey | last_success_utc | last_attempt_utc | status |
 |---|---|---|---|---|
-| `quota_snapshots` | `sub-aaaa-1111` | 2026-03-16T14:00:00Z | 2026-03-16T14:15:00Z | `success` |
-| `quota_snapshots` | `sub-bbbb-2222` | 2026-03-16T14:00:00Z | 2026-03-16T14:15:00Z | `success` |
+| `quota_snapshots` | `sub-aaaa-1111` | 2026-03-16T14:15:00Z | 2026-03-16T14:15:00Z | `success` |
+| `quota_snapshots` | `sub-bbbb-2222` | 2026-03-16T14:15:00Z | 2026-03-16T14:15:00Z | `success` |
 | `deployment_config` | `sub-aaaa-1111` | 2026-03-16T14:00:00Z | 2026-03-16T14:00:00Z | `success` |
 | `deployment_config` | `sub-bbbb-2222` | 2026-03-16T14:00:00Z | 2026-03-16T14:00:00Z | `success` |
-| `token_usage` | `sub-aaaa-1111` | 2026-03-16T13:30:00Z | 2026-03-16T14:00:00Z | `success` |
-| `token_usage` | `sub-bbbb-2222` | 2026-03-16T12:30:00Z | 2026-03-16T13:00:00Z | `failed` |
+| `token_usage` | `sub-aaaa-1111` | 2026-03-16T13:30:00Z | 2026-03-16T13:30:00Z | `success` |
+| `token_usage` | `sub-bbbb-2222` |  | 2026-03-16T13:00:00Z | `failed` |
 
 **How it works:**
 

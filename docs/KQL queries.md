@@ -135,13 +135,13 @@ TokenUsage_CL
 
 ## 2. Quota Snapshot (fact table — periodic snapshot)
 
-Deduplicated quota data. The natural key is subscription + region + model + time bucket. Because snapshots are taken every ~15 minutes, we bin `timestamp_t` to 15m to collapse any retries within the same window.
+Deduplicated quota data. The natural key is subscription + region + model + time bucket. Because snapshots are taken every ~1 hour, we bin `timestamp_t` to 1h to collapse any retries within the same window.
 
 > **Join note:** QuotaSnapshot is collected at the **subscription + region** level (not per resource). Join to other tables via `SubscriptionId` + `Region`/`Location`.
 
 ```kql
 QuotaSnapshot_CL
-| extend SnapshotBucket = bin(timestamp_t, 15m)
+| extend SnapshotBucket = bin(timestamp_t, 1h)
 | summarize arg_max(TimeGenerated, *) by subscriptionId_s, region_s, model_s, SnapshotBucket
 | project
     Timestamp        = SnapshotBucket,
@@ -172,23 +172,23 @@ QuotaSnapshot_CL
     UtilizationPct   = utilizationPct_d
 ```
 
-### 2c. Quota — hourly rollup (average utilization)
+### 2c. Quota — hourly snapshot (deduplicated)
+
+Since quota is now collected hourly, this query simply deduplicates within the 1h bucket — useful as an Import-mode table in Power BI.
 
 ```kql
 QuotaSnapshot_CL
-| extend SnapshotBucket = bin(timestamp_t, 15m)
-| summarize arg_max(TimeGenerated, *) by subscriptionId_s, region_s, model_s, SnapshotBucket
-| summarize
-    AvgDeployedTPM    = avg(deployedTPM_d),
-    AvgMaxTPM         = avg(maxTPM_d),
-    AvgUtilizationPct = avg(utilizationPct_d),
-    MaxUtilizationPct = max(utilizationPct_d)
-    by
+| extend Hour = bin(timestamp_t, 1h)
+| summarize arg_max(TimeGenerated, *) by subscriptionId_s, region_s, model_s, Hour
+| project
+    Hour,
     SubscriptionId    = subscriptionId_s,
     SubscriptionName  = subscriptionName_s,
     Region            = region_s,
     Model             = model_s,
-    Hour              = bin(SnapshotBucket, 1h)
+    DeployedTPM       = deployedTPM_d,
+    MaxTPM            = maxTPM_d,
+    UtilizationPct    = utilizationPct_d
 ```
 
 ---
@@ -555,5 +555,5 @@ Use a bridge or DAX measure rather than a direct relationship.
 **Tips:**
 - Use **Import mode** with the hourly rollup queries (1b, 2c) for dashboards that don't need 5-minute granularity — this significantly reduces model size.
 - Use **DirectQuery** with the detailed queries (1, 2) only if you need live data or the volume is too large for import.
-- Set scheduled refresh to match your function collection interval (~60 min for token usage, ~15 min for quota snapshots).
+- Set scheduled refresh to match your function collection interval (~60 min for token usage, ~60 min for quota snapshots).
 - The `arg_max(TimeGenerated, *)` pattern ensures that if the same data point is ingested multiple times (watermark failure, retry, overlapping window), only the most recent ingestion is kept.
