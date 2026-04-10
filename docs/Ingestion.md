@@ -60,6 +60,8 @@ Cross-subscription enumeration is the slowest part of each function. Two approac
 
 **Decision:** Start with in-process async. At enterprise scale (10–15 subscriptions), `asyncio.gather` with `MAX_PARALLEL_SUBS=5` means 2–3 serial batches — well within the 30-min Flex Consumption timeout. `MAX_PARALLEL_SUBS` is exposed as an app setting, adjustable without redeployment.
 
+`METRICS_GRANULARITY` controls the time-bucket size for Azure Monitor metric queries in `fn_token_usage`. The value is an ISO 8601 duration (e.g. `PT5M`, `PT15M`, `PT1H`). Default: `PT5M`.
+
 **Graduation criteria for Durable Functions:** Revisit if subscription count exceeds ~30 and individual subscription processing takes >2 min, or if per-subscription retry isolation becomes a requirement (one subscription's API failure shouldn't block the others).
 
 ```python
@@ -104,6 +106,7 @@ async def ingest_token_usage(subscriptions):
 ┌─────────────────── Azure Function App ────────────────────────┐
 │                  (Flex Consumption, Managed Identity)         │
 │                  App setting: MAX_PARALLEL_SUBS = 5           │
+│                  App setting: METRICS_GRANULARITY = PT5M       │
 │                                                               │
 │  ┌─────────────────────────────────────────────────────────┐  │
 │  │ fn_quota_snapshot  (timer: every 1 hour)                │  │
@@ -133,7 +136,7 @@ async def ingest_token_usage(subscriptions):
 │  │  1. Enumerate subscriptions                             │  │
 │  │  2. For each sub (parallel, semaphore-bound):           │  │
 │  │     a. Read per-sub watermark                           │  │
-│  │     b. Query Monitor Metrics API for 5-min intervals    │  │
+│  │     b. Query Monitor Metrics API (METRICS_GRANULARITY)  │  │
 │  │        from watermark to (now - 30 min)                 │  │
 │  │     c. POST to Logs Ingestion API                       │  │
 │  │     d. Update per-sub watermark                         │  │

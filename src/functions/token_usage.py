@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 from azure.monitor.querymetrics import MetricAggregationType, MetricsClient
@@ -19,25 +20,21 @@ _WATERMARK_STREAM = "token_usage"
 _MAX_PARALLEL = int(os.environ.get("MAX_PARALLEL_SUBS", "5"))
 _COLLECTION_DELAY = timedelta(minutes=30)
 _DEFAULT_LOOKBACK = timedelta(hours=24)
-_GRANULARITY = timedelta(minutes=5)
 
 
-def _timedelta_to_iso8601(td: timedelta) -> str:
-    """Convert a timedelta to an ISO 8601 duration string (e.g. PT5M)."""
-    total_seconds = int(td.total_seconds())
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    parts = ["PT"]
-    if hours:
-        parts.append(f"{hours}H")
-    if minutes:
-        parts.append(f"{minutes}M")
-    if seconds or not (hours or minutes):
-        parts.append(f"{seconds}S")
-    return "".join(parts)
+def _parse_iso8601_duration(value: str) -> timedelta:
+    """Parse a simple ISO 8601 duration (e.g. PT5M, PT1H30M) to timedelta."""
+    match = re.match(r"^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$", value)
+    if not match:
+        raise ValueError(f"Invalid ISO 8601 duration: {value}")
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2) or 0)
+    seconds = int(match.group(3) or 0)
+    return timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
 
-_GRANULARITY_ISO = _timedelta_to_iso8601(_GRANULARITY)
+_GRANULARITY_ISO = os.environ.get("METRICS_GRANULARITY", "PT5M")
+_GRANULARITY = _parse_iso8601_duration(_GRANULARITY_ISO)
 
 
 def _query_metrics(
