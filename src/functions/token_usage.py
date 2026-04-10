@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from azure.monitor.querymetrics import MetricAggregationType, MetricsClient
+from requests.exceptions import HTTPError
 
 from shared.arm import list_deployments, list_instances, list_subscriptions
 from shared.clients import get_credential, get_ingestion_client
@@ -101,7 +102,17 @@ def _collect(sub: dict, window_start: datetime, window_end: datetime) -> list[di
         instance_name = inst["name"]
 
         # Build deployment → model name map
-        deployments = list_deployments(resource_id)
+        try:
+            deployments = list_deployments(resource_id)
+        except HTTPError as exc:
+            if exc.response is not None and exc.response.status_code in (404, 409):
+                logger.warning(
+                    "Instance %s: HTTP %d listing deployments (resource may be deleting), skipping",
+                    instance_name,
+                    exc.response.status_code,
+                )
+                continue
+            raise
         model_map = {}
         for d in deployments:
             props = d.get("properties", {})
