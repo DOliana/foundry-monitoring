@@ -36,7 +36,7 @@ https://ade.loganalytics.io/subscriptions/00000000-0000-0000-0000-000000000000/r
 | `TokenUsage_CL` | resourceId + deployment + metric timestamp | Watermark failures cause the same 5-min bucket to be re-ingested; overlapping collection windows |
 | `QuotaSnapshot_CL` | subscription + region + model + snapshot time | Change detection disabled, or same snapshot written on retry |
 | `DeploymentConfig_CL` | resourceId + deployment + snapshot time | Change detection disabled, or same config written on retry |
-| `ModelCatalog_CL` | subscription + region + model name + version | Daily full snapshot; same catalog written on retry or overlapping runs |
+| `ModelCatalog_CL` | subscription + region + model name + version | Change detection enabled; same catalog written on retry when change detection is disabled |
 
 **Strategy:** For time-series tables we keep the **last-ingested row** per natural key using `arg_max(TimeGenerated, *)`. This is needed to avoid duplicates in the case a value is loaded multiple times due to retries or similar. For snapshot/config tables we additionally expose a "latest state" query.
 
@@ -70,6 +70,7 @@ DeploymentConfig_CL
 ```kql
 ModelCatalog_CL
 | summarize arg_max(TimeGenerated, *) by subscriptionId_s, region_s, modelName_s, modelVersion_s
+| where isDeleted_b == false
 ```
 
 ### helper tables for schema (suggestion)

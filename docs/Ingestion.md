@@ -215,6 +215,7 @@ This pattern is enforced by creating saved functions for each custom table:
 | `fn_QuotaSnapshot()` | `(timestamp, subscriptionId, region, model)` — filters `isDeleted_b == false` for active view |
 | `fn_DeploymentConfig()` | `(resourceId, deploymentName)` — filters `isDeleted_b == false` for active view |
 | `fn_TokenUsage()` | `(timestamp, subscriptionId, resourceId, deploymentName)` |
+| `fn_ModelCatalog()` | `(subscriptionId, region, modelName, modelVersion)` — filters `isDeleted_b == false` for active view |
 
 **Rule: No dashboard, alert, or workbook queries the raw `*_CL` table directly.**
 
@@ -242,11 +243,11 @@ This pattern is enforced by creating saved functions for each custom table:
 
 **Azure soft-delete behaviour:** When a Foundry instance is deleted in Azure, it enters a 48-hour soft-delete state. During this period the instance **disappears from the regular Accounts List API** (which `list_instances()` uses), so all its deployments vanish from the scan. The instance can be recovered within 48 hours, after which it is auto-purged. Note that **charges for provisioned deployments continue until the resource is purged**.
 
-**Mitigation:** Both `fn_deployment_config` and `fn_quota_snapshot` perform **soft-delete detection** at two levels:
+**Mitigation:** `fn_deployment_config`, `fn_quota_snapshot`, and `fn_model_catalog` perform **soft-delete detection**. For deployments and quota this operates at two levels; for model catalog only Level 1 applies (models are not tied to customer resources, so subscription disappearance doesn't require special handling):
 
 **Level 1 — Entity deletion within a subscription:** Each function compares the current ARM state against the previous Log Analytics snapshot:
 
-1. During collection, a set of all currently-observed keys is tracked (`(resourceId, deploymentName)` for deployments; `(region, model)` for quota).
+1. During collection, a set of all currently-observed keys is tracked (`(resourceId, deploymentName)` for deployments; `(region, model)` for quota; `(region, modelName, modelVersion)` for model catalog).
 2. After the main collection loop, keys present in the snapshot but absent from the current scan are identified as deletions.
 3. For each deletion, a **marker row** is emitted with `isDeleted_b = true`, preserving identifying fields from the last-known snapshot while zeroing numeric fields.
 4. Active rows carry `isDeleted_b = false`.
@@ -256,7 +257,7 @@ This pattern is enforced by creating saved functions for each custom table:
 
 **Recovery (undelete):** If a soft-deleted Foundry instance is recovered within the 48-hour window, all its deployments reappear in ARM. The next `fn_deployment_config` run emits normal rows with `isDeleted_b = false`, which supersede the deletion markers via `arg_max(TimeGenerated, *)`.
 
-**Edge case — instance in transitional `Deleting` state:** While a deletion is in progress, `list_instances()` may still return the instance but `list_deployments()` or `get_quota_usages()` may fail with HTTP 404/409. Both functions catch these specific HTTP errors and skip the affected instance/region, logging a warning. Those entries will be detected as deletions on the next run once the resource fully disappears.
+**Edge case — instance in transitional `Deleting` state:** While a deletion is in progress, `list_instances()` may still return the instance but `list_deployments()`, `get_quota_usages()`, or `list_models()` may fail with HTTP 404/409. All functions catch these specific HTTP errors and skip the affected instance/region, logging a warning. Those entries will be detected as deletions on the next run once the resource fully disappears.
 
 **Requires change detection to be enabled** (`LOG_ANALYTICS_WORKSPACE_ID` must be set). When disabled, no snapshot is available and no deletion markers are emitted. Subscription-level detection also requires the workspace ID since it relies on querying the snapshot for the disappeared subscription.
 
@@ -271,6 +272,11 @@ DeploymentConfig_CL
 // Active quota entries
 QuotaSnapshot_CL
 | summarize arg_max(TimeGenerated, *) by subscriptionId_s, region_s, model_s
+| where isDeleted_b == false
+
+// Active model catalog entries
+ModelCatalog_CL
+| summarize arg_max(TimeGenerated, *) by subscriptionId_s, region_s, modelName_s, modelVersion_s
 | where isDeleted_b == false
 ```
 

@@ -112,6 +112,7 @@ resource tableModelCatalog 'Microsoft.OperationalInsights/workspaces/tables@2022
         { name: 'deprecationInference_s', type: 'string' }
         { name: 'deprecationFineTune_s', type: 'string' }
         { name: 'skuNames_s', type: 'string' }
+        { name: 'isDeleted_b', type: 'boolean' }
       ]
     }
     retentionInDays: 90

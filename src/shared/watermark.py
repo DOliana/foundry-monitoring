@@ -1,4 +1,11 @@
-"""Watermark table operations for tracking ingestion progress."""
+"""Watermark table operations for tracking ingestion progress.
+
+TableClient (azure-data-tables) is built on azure-core, which provides a default
+retry policy: exponential backoff, 3 retries, on 408/429/500/502/503/504.  If a
+watermark write still fails after retries, the caller's except-block marks the
+subscription as failed and the next scheduled run re-ingests the window (dedup
+via saved KQL functions handles any resulting duplicates).
+"""
 
 import logging
 from datetime import datetime, timezone

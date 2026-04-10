@@ -182,6 +182,7 @@ resource dcrModelCatalog 'Microsoft.Insights/dataCollectionRules@2023-03-11' = {
           { name: 'deprecationInference_s', type: 'string' }
           { name: 'deprecationFineTune_s', type: 'string' }
           { name: 'skuNames_s', type: 'string' }
+          { name: 'isDeleted_b', type: 'boolean' }
         ]
       }
     }
