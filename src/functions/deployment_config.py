@@ -11,6 +11,7 @@ from requests.exceptions import HTTPError
 
 from shared.arm import list_deployments, list_instances, list_subscriptions
 from shared.clients import get_credential, get_ingestion_client
+from shared.retention import REFRESH_THRESHOLD, RETENTION_PERIOD
 from shared.watermark import (
     list_watermarked_subscriptions,
     mark_failed,
@@ -56,7 +57,7 @@ def _get_last_snapshot(sub_id: str) -> dict[tuple[str, str], dict]:
     result = client.query_workspace(
         _WORKSPACE_ID,
         query,
-        timespan=timedelta(days=7),
+        timespan=RETENTION_PERIOD,
         additional_workspaces=None,
         query_parameters={"sub_id": sub_id},
     )
@@ -140,13 +141,16 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
                 "isDeleted_b": False,
             }
 
-            # Change detection: skip if identical to the last snapshot
+            # Change detection: skip if identical to the last snapshot AND still fresh
             prev = last_snapshot.get(key)
             if prev is not None and all(
                 row.get(f) == prev.get(f) for f in _COMPARE_FIELDS
             ):
-                logger.debug("Skipping unchanged deployment %s/%s", resource_id, d["name"])
-                continue
+                prev_age = now - prev["TimeGenerated"]
+                if prev_age < REFRESH_THRESHOLD:
+                    logger.debug("Skipping unchanged deployment %s/%s", resource_id, d["name"])
+                    continue
+                logger.debug("Refreshing stale deployment %s/%s (age=%s)", resource_id, d["name"], prev_age)
 
             rows.append(row)
 

@@ -62,6 +62,8 @@ Cross-subscription enumeration is the slowest part of each function. Two approac
 
 `METRICS_GRANULARITY` controls the time-bucket size for Azure Monitor metric queries in `fn_token_usage`. The value is an ISO 8601 duration (e.g. `PT5M`, `PT15M`, `PT1H`). Default: `PT5M`.
 
+`RETENTION_DAYS` must match the Log Analytics workspace interactive retention period (in days). It controls two things: (1) the query `timespan` used by change-detection snapshot queries, so they cover the full queryable window, and (2) a freshness threshold (`RETENTION_DAYS - 1`) — unchanged rows older than this are re-written with a fresh `TimeGenerated` to prevent them from silently aging out of retention and disappearing from dashboards. Default: `30`.
+
 **Graduation criteria for Durable Functions:** Revisit if subscription count exceeds ~30 and individual subscription processing takes >2 min, or if per-subscription retry isolation becomes a requirement (one subscription's API failure shouldn't block the others).
 
 ```python
@@ -107,6 +109,7 @@ async def ingest_token_usage(subscriptions):
 │                  (Flex Consumption, Managed Identity)         │
 │                  App setting: MAX_PARALLEL_SUBS = 5           │
 │                  App setting: METRICS_GRANULARITY = PT5M       │
+│                  App setting: RETENTION_DAYS = 30              │
 │                                                               │
 │  ┌─────────────────────────────────────────────────────────┐  │
 │  │ fn_quota_snapshot  (timer: every 1 hour)                │  │
