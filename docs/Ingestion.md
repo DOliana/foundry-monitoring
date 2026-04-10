@@ -114,9 +114,14 @@ async def ingest_token_usage(subscriptions):
 │  │  2. For each sub (parallel, semaphore-bound):           │  │
 │  │     a. Read per-sub watermark from Table Storage        │  │
 │  │     b. Collect quota data from ARM API                  │  │
-│  │     c. POST to Logs Ingestion API                       │  │
-│  │     d. Update per-sub watermark on 204 response         │  │
-│  │  3. Log failures; failed subs retry next run            │  │
+│  │     c. Detect deleted quota entries (snapshot vs ARM)   │  │
+│  │        and emit soft-delete marker rows                 │  │
+│  │     d. POST to Logs Ingestion API                       │  │
+│  │     e. Update per-sub watermark on 204 response         │  │
+│  │  3. Detect disappeared subscriptions (watermark table   │  │
+│  │     vs ARM) and emit deletion markers for all their     │  │
+│  │     quota entries                                       │  │
+│  │  4. Log failures; failed subs retry next run            │  │
 │  └─────────────────────────────────────────────────────────┘  │
 │                                                               │
 │  ┌─────────────────────────────────────────────────────────┐  │
@@ -130,7 +135,10 @@ async def ingest_token_usage(subscriptions):
 │  │     e. Detect deleted deployments (snapshot vs ARM)     │  │
 │  │        and emit soft-delete marker rows                 │  │
 │  │     f. Update per-sub watermark                         │  │
-│  │  3. Log failures; failed subs retry next run            │  │
+│  │  3. Detect disappeared subscriptions (watermark table   │  │
+│  │     vs ARM) and emit deletion markers for all their     │  │
+│  │     deployments                                         │  │
+│  │  4. Log failures; failed subs retry next run            │  │
 │  └─────────────────────────────────────────────────────────┘  │
 │                                                               │
 │  ┌─────────────────────────────────────────────────────────┐  │
@@ -204,7 +212,7 @@ This pattern is enforced by creating saved functions for each custom table:
 
 | Saved function | Dedup key |
 |---|---|
-| `fn_QuotaSnapshot()` | `(timestamp, subscriptionId, region, model)` |
+| `fn_QuotaSnapshot()` | `(timestamp, subscriptionId, region, model)` — filters `isDeleted_b == false` for active view |
 | `fn_DeploymentConfig()` | `(resourceId, deploymentName)` — filters `isDeleted_b == false` for active view |
 | `fn_TokenUsage()` | `(timestamp, subscriptionId, resourceId, deploymentName)` |
 
@@ -228,31 +236,41 @@ This pattern is enforced by creating saved functions for each custom table:
 
 **Mitigation:** The watermark does not update on non-204 responses, so the next run re-ingests the full window. The saved function dedup handles any resulting duplicates. The Logs Ingestion API's transactional behavior within a single call **needs investigation** (support case or empirical testing) — but the architecture is resilient regardless.
 
-#### Challenge 5: Deleted deployments (and deleted Foundry instances)
+#### Challenge 5: Deleted deployments, quota entries, and subscriptions
 
-**Scenario:** A deployment is removed from ARM (either directly deleted, or its parent Foundry instance is soft-deleted). The deployment no longer appears in `list_deployments()`. Because Log Analytics is append-only and `fn_deployment_config` only writes rows for things it observes, the last-known configuration row remains as the latest record — making deleted deployments indistinguishable from active ones in KQL queries.
+**Scenario:** A deployment is removed from ARM (either directly deleted, or its parent Foundry instance is soft-deleted). The deployment no longer appears in `list_deployments()`. Similarly, a quota model/region entry may disappear if all instances in a region are removed, or an entire subscription may become disabled or removed. Because Log Analytics is append-only and the ingestion functions only write rows for things they observe, the last-known row remains as the latest record — making deleted entities indistinguishable from active ones in KQL queries.
 
 **Azure soft-delete behaviour:** When a Foundry instance is deleted in Azure, it enters a 48-hour soft-delete state. During this period the instance **disappears from the regular Accounts List API** (which `list_instances()` uses), so all its deployments vanish from the scan. The instance can be recovered within 48 hours, after which it is auto-purged. Note that **charges for provisioned deployments continue until the resource is purged**.
 
-**Mitigation:** `fn_deployment_config` performs **soft-delete detection** by comparing the current ARM state against the previous Log Analytics snapshot:
+**Mitigation:** Both `fn_deployment_config` and `fn_quota_snapshot` perform **soft-delete detection** at two levels:
 
-1. During collection, a set of all currently-observed `(resourceId, deploymentName)` keys is tracked.
+**Level 1 — Entity deletion within a subscription:** Each function compares the current ARM state against the previous Log Analytics snapshot:
+
+1. During collection, a set of all currently-observed keys is tracked (`(resourceId, deploymentName)` for deployments; `(region, model)` for quota).
 2. After the main collection loop, keys present in the snapshot but absent from the current scan are identified as deletions.
-3. For each deletion, a **marker row** is emitted with `isDeleted_b = true`, preserving identifying fields from the last-known snapshot (subscription, resource, deployment name, model name) while zeroing numeric fields (capacity, TPM, RPM).
-4. Active deployment rows carry `isDeleted_b = false`.
-5. Deployments already marked as deleted in the previous snapshot are **not re-emitted** (no duplicate delete markers on each run).
+3. For each deletion, a **marker row** is emitted with `isDeleted_b = true`, preserving identifying fields from the last-known snapshot while zeroing numeric fields.
+4. Active rows carry `isDeleted_b = false`.
+5. Entries already marked as deleted in the previous snapshot are **not re-emitted** (no duplicate delete markers on each run).
+
+**Level 2 — Subscription disappearance:** After processing all active subscriptions, each function compares `list_subscriptions()` against the watermark table (via `list_watermarked_subscriptions()`). For any subscription that has a watermark but is no longer returned by ARM, the function queries the last snapshot and emits deletion markers for all its active entries. This handles subscriptions being disabled, deleted, or having their RBAC revoked.
 
 **Recovery (undelete):** If a soft-deleted Foundry instance is recovered within the 48-hour window, all its deployments reappear in ARM. The next `fn_deployment_config` run emits normal rows with `isDeleted_b = false`, which supersede the deletion markers via `arg_max(TimeGenerated, *)`.
 
-**Edge case — instance in transitional `Deleting` state:** While a deletion is in progress, `list_instances()` may still return the instance but `list_deployments()` may fail. The function catches these errors and skips the instance, logging a warning. Those deployments will be detected as deletions on the next run once the instance fully disappears.
+**Edge case — instance in transitional `Deleting` state:** While a deletion is in progress, `list_instances()` may still return the instance but `list_deployments()` or `get_quota_usages()` may fail with HTTP 404/409. Both functions catch these specific HTTP errors and skip the affected instance/region, logging a warning. Those entries will be detected as deletions on the next run once the resource fully disappears.
 
-**Requires change detection to be enabled** (`LOG_ANALYTICS_WORKSPACE_ID` must be set). When disabled, no snapshot is available and no deletion markers are emitted.
+**Requires change detection to be enabled** (`LOG_ANALYTICS_WORKSPACE_ID` must be set). When disabled, no snapshot is available and no deletion markers are emitted. Subscription-level detection also requires the workspace ID since it relies on querying the snapshot for the disappeared subscription.
 
-**KQL impact:** Queries resolving active deployments must filter:
+**KQL impact:** Queries resolving active entities must filter:
 
 ```kql
+// Active deployments
 DeploymentConfig_CL
 | summarize arg_max(TimeGenerated, *) by resourceId_s, deploymentName_s
+| where isDeleted_b == false
+
+// Active quota entries
+QuotaSnapshot_CL
+| summarize arg_max(TimeGenerated, *) by subscriptionId_s, region_s, model_s
 | where isDeleted_b == false
 ```
 

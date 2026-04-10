@@ -11,7 +11,12 @@ from requests.exceptions import HTTPError
 
 from shared.arm import list_deployments, list_instances, list_subscriptions
 from shared.clients import get_credential, get_ingestion_client
-from shared.watermark import mark_failed, mark_success, read_watermark
+from shared.watermark import (
+    list_watermarked_subscriptions,
+    mark_failed,
+    mark_success,
+    read_watermark,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +181,34 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
     return rows
 
 
+def _collect_deleted_sub_rows(sub_id: str, now: datetime) -> list[dict]:
+    """Emit soft-delete markers for all deployments of a disappeared subscription."""
+    last_snapshot = _get_last_snapshot(sub_id)
+    rows = []
+    for key, prev in last_snapshot.items():
+        if prev.get("isDeleted_b") is True:
+            continue
+        logger.info("Detected deleted deployment (sub gone): %s/%s in sub %s", *key, sub_id)
+        rows.append({
+            "TimeGenerated": now.isoformat(),
+            "subscriptionId_s": prev.get("subscriptionId_s", ""),
+            "subscriptionName_s": prev.get("subscriptionName_s", ""),
+            "resourceId_s": prev.get("resourceId_s", ""),
+            "resourceName_s": prev.get("resourceName_s", ""),
+            "location_s": prev.get("location_s", ""),
+            "kind_s": prev.get("kind_s", ""),
+            "deploymentName_s": prev.get("deploymentName_s", ""),
+            "modelName_s": prev.get("modelName_s", ""),
+            "modelVersion_s": prev.get("modelVersion_s", ""),
+            "skuName_s": prev.get("skuName_s", ""),
+            "skuCapacity_d": 0.0,
+            "tpmLimit_d": 0.0,
+            "rpmLimit_d": 0.0,
+            "isDeleted_b": True,
+        })
+    return rows
+
+
 async def run() -> None:
     now = datetime.now(timezone.utc)
     semaphore = asyncio.Semaphore(_MAX_PARALLEL)
@@ -241,3 +274,21 @@ async def run() -> None:
         "Deployment config complete: %d ingested, %d skipped, %d failed (of %d)",
         ingested, skipped, failed, len(subscriptions),
     )
+
+    # Detect disappeared subscriptions: have a watermark but are no longer in ARM.
+    if _WORKSPACE_ID:
+        active_sub_ids = {s["subscriptionId"] for s in subscriptions}
+        watermarked = list_watermarked_subscriptions(_WATERMARK_STREAM)
+        gone_subs = [sid for sid in watermarked if sid not in active_sub_ids]
+        for sub_id in gone_subs:
+            try:
+                rows = await asyncio.to_thread(_collect_deleted_sub_rows, sub_id, now)
+                if rows:
+                    await asyncio.to_thread(
+                        ingestion.upload, _DCR_RULE_ID, _STREAM_NAME, rows
+                    )
+                    logger.info(
+                        "Sub %s (gone): emitted %d deletion markers for deployments", sub_id, len(rows)
+                    )
+            except Exception:
+                logger.error("Sub %s (gone): failed to emit deployment deletion markers", sub_id, exc_info=True)

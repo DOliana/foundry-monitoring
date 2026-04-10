@@ -22,6 +22,7 @@ resource tableQuotaSnapshot 'Microsoft.OperationalInsights/workspaces/tables@202
         { name: 'deployedTPM_d', type: 'real' }
         { name: 'maxTPM_d', type: 'real' }
         { name: 'utilizationPct_d', type: 'real' }
+        { name: 'isDeleted_b', type: 'boolean' }
       ]
     }
     retentionInDays: 90

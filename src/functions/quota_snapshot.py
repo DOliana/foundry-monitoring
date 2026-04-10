@@ -7,9 +7,16 @@ from datetime import datetime, timedelta, timezone
 
 from azure.monitor.query import LogsQueryClient, LogsQueryStatus
 
+from requests.exceptions import HTTPError
+
 from shared.arm import get_quota_usages, list_instances, list_subscriptions
 from shared.clients import get_credential, get_ingestion_client
-from shared.watermark import mark_failed, mark_success, read_watermark
+from shared.watermark import (
+    list_watermarked_subscriptions,
+    mark_failed,
+    mark_success,
+    read_watermark,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +72,11 @@ def _get_last_snapshot(sub_id: str) -> dict[tuple[str, str], dict]:
 
 
 def _collect(sub: dict, now: datetime) -> list[dict]:
-    """Collect quota data for a single subscription across all instance regions."""
+    """Collect quota data for a single subscription across all instance regions.
+
+    Also detects quota entries that were present in the last snapshot but are no
+    longer returned by ARM and emits soft-delete marker rows for them.
+    """
     sub_id = sub["subscriptionId"]
     sub_name = sub["displayName"]
 
@@ -78,12 +89,27 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
     logger.debug("Sub %s: loaded %d previous snapshot entries", sub_id, len(last_snapshot))
 
     rows = []
+    current_keys: set[tuple[str, str]] = set()
+
     for location in locations:
-        usages = get_quota_usages(sub_id, location)
+        try:
+            usages = get_quota_usages(sub_id, location)
+        except HTTPError as exc:
+            if exc.response is not None and exc.response.status_code in (404, 409):
+                logger.warning(
+                    "Sub %s, %s: HTTP %d fetching quota (region may be unavailable), skipping",
+                    sub_id, location, exc.response.status_code,
+                )
+                continue
+            raise
         logger.debug("Sub %s, %s: got %d usage records", sub_id, location, len(usages))
         for u in usages:
             current = u.get("currentValue", 0)
             limit_val = u.get("limit", 0)
+
+            model = u.get("name", {}).get("value", "")
+            key = (location, model)
+            current_keys.add(key)
 
             row = {
                 "TimeGenerated": now.isoformat(),
@@ -91,24 +117,71 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
                 "subscriptionId_s": sub_id.lower(),
                 "subscriptionName_s": sub_name,
                 "region_s": location,
-                "model_s": u.get("name", {}).get("value", ""),
+                "model_s": model,
                 "deployedTPM_d": float(current),
                 "maxTPM_d": float(limit_val),
                 "utilizationPct_d": (
                     round(current / limit_val * 100, 2) if limit_val > 0 else 0.0
                 ),
+                "isDeleted_b": False,
             }
 
             # Change detection: skip if identical to the last snapshot
-            key = (location, row["model_s"])
             prev = last_snapshot.get(key)
             if prev is not None and all(
                 row.get(f) == prev.get(f) for f in _COMPARE_FIELDS
             ):
-                logger.debug("Skipping unchanged quota %s/%s", location, row["model_s"])
+                logger.debug("Skipping unchanged quota %s/%s", location, model)
                 continue
 
             rows.append(row)
+
+    # Detect deleted quota entries: present in snapshot but missing from ARM,
+    # and not already marked as deleted in the previous snapshot.
+    if last_snapshot:
+        for key, prev in last_snapshot.items():
+            if key in current_keys:
+                continue
+            if prev.get("isDeleted_b") is True:
+                logger.debug("Already marked deleted: %s/%s", *key)
+                continue
+            logger.info("Detected deleted quota entry: %s/%s", *key)
+            rows.append({
+                "TimeGenerated": now.isoformat(),
+                "timestamp_t": now.isoformat(),
+                "subscriptionId_s": prev.get("subscriptionId_s", ""),
+                "subscriptionName_s": prev.get("subscriptionName_s", ""),
+                "region_s": prev.get("region_s", ""),
+                "model_s": prev.get("model_s", ""),
+                "deployedTPM_d": 0.0,
+                "maxTPM_d": 0.0,
+                "utilizationPct_d": 0.0,
+                "isDeleted_b": True,
+            })
+
+    return rows
+
+
+def _collect_deleted_sub_rows(sub_id: str, now: datetime) -> list[dict]:
+    """Emit soft-delete markers for all quota entries of a disappeared subscription."""
+    last_snapshot = _get_last_snapshot(sub_id)
+    rows = []
+    for key, prev in last_snapshot.items():
+        if prev.get("isDeleted_b") is True:
+            continue
+        logger.info("Detected deleted quota entry (sub gone): %s/%s in sub %s", *key, sub_id)
+        rows.append({
+            "TimeGenerated": now.isoformat(),
+            "timestamp_t": now.isoformat(),
+            "subscriptionId_s": prev.get("subscriptionId_s", ""),
+            "subscriptionName_s": prev.get("subscriptionName_s", ""),
+            "region_s": prev.get("region_s", ""),
+            "model_s": prev.get("model_s", ""),
+            "deployedTPM_d": 0.0,
+            "maxTPM_d": 0.0,
+            "utilizationPct_d": 0.0,
+            "isDeleted_b": True,
+        })
     return rows
 
 
@@ -173,3 +246,21 @@ async def run() -> None:
         "Quota snapshot complete: %d ingested, %d skipped, %d failed (of %d)",
         ingested, skipped, failed, len(subscriptions),
     )
+
+    # Detect disappeared subscriptions: have a watermark but are no longer in ARM.
+    if _WORKSPACE_ID:
+        active_sub_ids = {s["subscriptionId"] for s in subscriptions}
+        watermarked = list_watermarked_subscriptions(_WATERMARK_STREAM)
+        gone_subs = [sid for sid in watermarked if sid not in active_sub_ids]
+        for sub_id in gone_subs:
+            try:
+                rows = await asyncio.to_thread(_collect_deleted_sub_rows, sub_id, now)
+                if rows:
+                    await asyncio.to_thread(
+                        ingestion.upload, _DCR_RULE_ID, _STREAM_NAME, rows
+                    )
+                    logger.info(
+                        "Sub %s (gone): emitted %d deletion markers for quota", sub_id, len(rows)
+                    )
+            except Exception:
+                logger.error("Sub %s (gone): failed to emit quota deletion markers", sub_id, exc_info=True)

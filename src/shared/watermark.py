@@ -65,3 +65,15 @@ def mark_failed(stream: str, subscription_id: str) -> None:
                 "status": "failed",
             }
         )
+
+
+def list_watermarked_subscriptions(stream: str) -> list[str]:
+    """Return all subscription IDs that have a watermark entry for the given stream."""
+    client = get_watermark_client()
+    entities = client.query_entities(
+        query_filter=f"PartitionKey eq '{stream}'",
+        select=["RowKey"],
+    )
+    result = [e["RowKey"] for e in entities]
+    logger.debug("Stream %s: found %d watermarked subscriptions", stream, len(result))
+    return result
