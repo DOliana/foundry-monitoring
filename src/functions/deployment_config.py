@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 from azure.monitor.query import LogsQueryClient, LogsQueryStatus
 
+from requests.exceptions import HTTPError
+
 from shared.arm import list_deployments, list_instances, list_subscriptions
 from shared.clients import get_credential, get_ingestion_client
 from shared.watermark import mark_failed, mark_success, read_watermark
@@ -69,7 +71,12 @@ def _get_last_snapshot(sub_id: str) -> dict[tuple[str, str], dict]:
 
 
 def _collect(sub: dict, now: datetime) -> list[dict]:
-    """Collect deployment configs for a subscription, filtering to changes only."""
+    """Collect deployment configs for a subscription, filtering to changes only.
+
+    Also detects deployments that were present in the last snapshot but are no
+    longer returned by ARM (deleted deployments or deleted instances) and emits
+    soft-delete marker rows for them.
+    """
     sub_id = sub["subscriptionId"]
     sub_name = sub["displayName"]
 
@@ -78,9 +85,21 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
     logger.debug("Sub %s: found %d instances, %d snapshot entries", sub_id, len(instances), len(last_snapshot))
 
     rows = []
+    current_keys: set[tuple[str, str]] = set()
+
     for inst in instances:
         resource_id = inst["resourceId"]
-        deployments = list_deployments(resource_id)
+        try:
+            deployments = list_deployments(resource_id)
+        except HTTPError as exc:
+            if exc.response is not None and exc.response.status_code in (404, 409):
+                logger.warning(
+                    "Instance %s: HTTP %d listing deployments (resource may be deleting), skipping",
+                    inst["name"],
+                    exc.response.status_code,
+                )
+                continue
+            raise
         logger.debug("Instance %s: %d deployments", inst["name"], len(deployments))
 
         for d in deployments:
@@ -94,6 +113,9 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
             rpm = next(
                 (r["count"] for r in rate_limits if r.get("key") == "request"), 0
             )
+
+            key = (resource_id.lower(), d["name"])
+            current_keys.add(key)
 
             row = {
                 "TimeGenerated": now.isoformat(),
@@ -110,10 +132,10 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
                 "skuCapacity_d": float(sku.get("capacity", 0)),
                 "tpmLimit_d": float(tpm),
                 "rpmLimit_d": float(rpm),
+                "isDeleted_b": False,
             }
 
             # Change detection: skip if identical to the last snapshot
-            key = (resource_id.lower(), d["name"])
             prev = last_snapshot.get(key)
             if prev is not None and all(
                 row.get(f) == prev.get(f) for f in _COMPARE_FIELDS
@@ -122,6 +144,34 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
                 continue
 
             rows.append(row)
+
+    # Detect deleted deployments: present in snapshot but missing from ARM,
+    # and not already marked as deleted in the previous snapshot.
+    if last_snapshot:
+        for key, prev in last_snapshot.items():
+            if key in current_keys:
+                continue
+            if prev.get("isDeleted_b") is True:
+                logger.debug("Already marked deleted: %s/%s", *key)
+                continue
+            logger.info("Detected deleted deployment: %s/%s", *key)
+            rows.append({
+                "TimeGenerated": now.isoformat(),
+                "subscriptionId_s": prev.get("subscriptionId_s", ""),
+                "subscriptionName_s": prev.get("subscriptionName_s", ""),
+                "resourceId_s": prev.get("resourceId_s", ""),
+                "resourceName_s": prev.get("resourceName_s", ""),
+                "location_s": prev.get("location_s", ""),
+                "kind_s": prev.get("kind_s", ""),
+                "deploymentName_s": prev.get("deploymentName_s", ""),
+                "modelName_s": prev.get("modelName_s", ""),
+                "modelVersion_s": prev.get("modelVersion_s", ""),
+                "skuName_s": prev.get("skuName_s", ""),
+                "skuCapacity_d": 0.0,
+                "tpmLimit_d": 0.0,
+                "rpmLimit_d": 0.0,
+                "isDeleted_b": True,
+            })
 
     return rows
 

@@ -127,7 +127,9 @@ async def ingest_token_usage(subscriptions):
 │  │     b. Collect deployment configs from ARM              │  │
 │  │     c. Query Log Analytics for last stable snapshot     │  │
 │  │     d. Diff: only write changed deployments             │  │
-│  │     e. Update per-sub watermark                         │  │
+│  │     e. Detect deleted deployments (snapshot vs ARM)     │  │
+│  │        and emit soft-delete marker rows                 │  │
+│  │     f. Update per-sub watermark                         │  │
 │  │  3. Log failures; failed subs retry next run            │  │
 │  └─────────────────────────────────────────────────────────┘  │
 │                                                               │
@@ -203,7 +205,7 @@ This pattern is enforced by creating saved functions for each custom table:
 | Saved function | Dedup key |
 |---|---|
 | `fn_QuotaSnapshot()` | `(timestamp, subscriptionId, region, model)` |
-| `fn_DeploymentConfig()` | `(resourceId, deploymentName)` |
+| `fn_DeploymentConfig()` | `(resourceId, deploymentName)` — filters `isDeleted_b == false` for active view |
 | `fn_TokenUsage()` | `(timestamp, subscriptionId, resourceId, deploymentName)` |
 
 **Rule: No dashboard, alert, or workbook queries the raw `*_CL` table directly.**
@@ -225,6 +227,36 @@ This pattern is enforced by creating saved functions for each custom table:
 **Scenario:** The Logs Ingestion API accepts a batch, returns a 5xx error, but some rows were committed internally.
 
 **Mitigation:** The watermark does not update on non-204 responses, so the next run re-ingests the full window. The saved function dedup handles any resulting duplicates. The Logs Ingestion API's transactional behavior within a single call **needs investigation** (support case or empirical testing) — but the architecture is resilient regardless.
+
+#### Challenge 5: Deleted deployments (and deleted Foundry instances)
+
+**Scenario:** A deployment is removed from ARM (either directly deleted, or its parent Foundry instance is soft-deleted). The deployment no longer appears in `list_deployments()`. Because Log Analytics is append-only and `fn_deployment_config` only writes rows for things it observes, the last-known configuration row remains as the latest record — making deleted deployments indistinguishable from active ones in KQL queries.
+
+**Azure soft-delete behaviour:** When a Foundry instance is deleted in Azure, it enters a 48-hour soft-delete state. During this period the instance **disappears from the regular Accounts List API** (which `list_instances()` uses), so all its deployments vanish from the scan. The instance can be recovered within 48 hours, after which it is auto-purged. Note that **charges for provisioned deployments continue until the resource is purged**.
+
+**Mitigation:** `fn_deployment_config` performs **soft-delete detection** by comparing the current ARM state against the previous Log Analytics snapshot:
+
+1. During collection, a set of all currently-observed `(resourceId, deploymentName)` keys is tracked.
+2. After the main collection loop, keys present in the snapshot but absent from the current scan are identified as deletions.
+3. For each deletion, a **marker row** is emitted with `isDeleted_b = true`, preserving identifying fields from the last-known snapshot (subscription, resource, deployment name, model name) while zeroing numeric fields (capacity, TPM, RPM).
+4. Active deployment rows carry `isDeleted_b = false`.
+5. Deployments already marked as deleted in the previous snapshot are **not re-emitted** (no duplicate delete markers on each run).
+
+**Recovery (undelete):** If a soft-deleted Foundry instance is recovered within the 48-hour window, all its deployments reappear in ARM. The next `fn_deployment_config` run emits normal rows with `isDeleted_b = false`, which supersede the deletion markers via `arg_max(TimeGenerated, *)`.
+
+**Edge case — instance in transitional `Deleting` state:** While a deletion is in progress, `list_instances()` may still return the instance but `list_deployments()` may fail. The function catches these errors and skips the instance, logging a warning. Those deployments will be detected as deletions on the next run once the instance fully disappears.
+
+**Requires change detection to be enabled** (`LOG_ANALYTICS_WORKSPACE_ID` must be set). When disabled, no snapshot is available and no deletion markers are emitted.
+
+**KQL impact:** Queries resolving active deployments must filter:
+
+```kql
+DeploymentConfig_CL
+| summarize arg_max(TimeGenerated, *) by resourceId_s, deploymentName_s
+| where isDeleted_b == false
+```
+
+Queries intentionally tracking deletion history can filter for `isDeleted_b == true`.
 
 ---
 

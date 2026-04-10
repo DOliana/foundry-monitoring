@@ -50,6 +50,7 @@ resource tableDeploymentConfig 'Microsoft.OperationalInsights/workspaces/tables@
         { name: 'skuCapacity_d', type: 'real' }
         { name: 'tpmLimit_d', type: 'real' }
         { name: 'rpmLimit_d', type: 'real' }
+        { name: 'isDeleted_b', type: 'boolean' }
       ]
     }
     retentionInDays: 90
