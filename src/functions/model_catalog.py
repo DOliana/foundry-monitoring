@@ -5,6 +5,8 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
+from requests.exceptions import HTTPError
+
 from shared.arm import list_models, list_instances, list_subscriptions
 from shared.clients import get_ingestion_client
 from shared.watermark import mark_failed, mark_success, read_watermark
@@ -30,9 +32,14 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
     for location in locations:
         try:
             models = list_models(sub_id, location)
-        except Exception as exc:
-            logger.warning("Sub %s, %s: skipping model catalog — %s", sub_id, location, exc)
-            continue
+        except HTTPError as exc:
+            if exc.response is not None and exc.response.status_code in (404, 409):
+                logger.warning(
+                    "Sub %s, %s: HTTP %d listing models, skipping",
+                    sub_id, location, exc.response.status_code,
+                )
+                continue
+            raise
         logger.debug("Sub %s, %s: found %d catalog models", sub_id, location, len(models))
 
         for entry in models:
