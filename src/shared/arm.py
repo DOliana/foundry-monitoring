@@ -2,6 +2,7 @@
 
 import logging
 import re
+import time
 
 import requests
 
@@ -27,6 +28,34 @@ def _get_paginated(url: str, params: dict | None = None) -> list:
     while url:
         resp = requests.get(url, headers=_get_headers(), params=params, timeout=60)
         resp.raise_for_status()
+        body = resp.json()
+        page_items = body.get("value", [])
+        results.extend(page_items)
+        page += 1
+        logger.debug("Paginated GET page %d: %d items (total %d)", page, len(page_items), len(results))
+        url = body.get("nextLink")
+        params = None  # nextLink already includes query params
+    return results
+
+
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+_MAX_RETRIES = 10
+
+
+def _get_paginated_with_retry(url: str, params: dict | None = None) -> list:
+    """GET with nextLink pagination and exponential backoff retry on 429/5xx."""
+    results = []
+    page = 0
+    while url:
+        for attempt in range(_MAX_RETRIES + 1):
+            resp = requests.get(url, headers=_get_headers(), params=params, timeout=60)
+            if resp.status_code in _RETRYABLE_STATUS_CODES and attempt < _MAX_RETRIES:
+                delay = 2 ** attempt
+                logger.warning("HTTP %d (attempt %d/%d). Retrying in %ds...", resp.status_code, attempt + 1, _MAX_RETRIES, delay)
+                time.sleep(delay)
+                continue
+            resp.raise_for_status()
+            break
         body = resp.json()
         page_items = body.get("value", [])
         results.extend(page_items)
