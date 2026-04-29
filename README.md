@@ -27,6 +27,9 @@ Prerequisites:
 
 use `azd up` in the root folder
 
+> **Note: portal-only deployment is not supported.**
+> The Data Collection Rules in [`data-collection.bicep`](infrastructure/modules/data-collection.bicep) are **direct-ingestion** DCRs (the Function App pushes JSON to the Logs Ingestion API). The Azure portal — both the new and the classic DCR creation experiences — only supports **agent-based** DCRs and always requires a `File pattern`, which does not apply here. Direct-ingestion DCRs must be created via Bicep/ARM, REST, or `az monitor data-collection rule create --rule-file`. If a click-through experience is required, deploy the compiled ARM template via *Portal → Deploy a custom template* (`az bicep build --file infrastructure/main.bicep`).
+
 ## Files
 
 ### Documentation (`/docs` folder)
