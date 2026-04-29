@@ -33,7 +33,7 @@ Most of this data can be gathered by using an [AI-Gateway](https://github.com/Az
 #### Azure permissions for the deploying user
 
 | Scope | Role | Why |
-|---|---|---|
+| --- | --- | --- |
 | Deployment resource group | **Contributor** | Create the Function App, storage, App Insights, DCE, DCRs, and (optionally) workspace + alerts. |
 | Workspace's RG (only when reusing an existing workspace in a different RG) | **Contributor** — or at minimum `Microsoft.OperationalInsights/workspaces/tables/write` on the workspace | Custom `*_CL` tables are written to the workspace. |
 | Each target subscription, the workspace, and each DCR | **User Access Administrator** (or **Owner**) | Required only to assign the managed identity's runtime roles. Skip with `AZURE_ASSIGN_RBAC=false` if a separate admin will run `infrastructure/scripts/Assign-MonitoringRbac.ps1` afterwards. |
@@ -43,7 +43,7 @@ The full role-to-API-action mapping (and the runtime roles granted to the Functi
 ### Parameters
 
 | Parameter (Bicep / azd env var) | Required? | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `prefix` | **Yes** | Lowercase, 2–8 chars. Used to name all resources. `azd up` prompts for it on the first run and remembers your answer. |
 | Resource group / region (azd) | **Yes** | `azd up` prompts for the Azure subscription, region, and environment name on the first run. The RG defaults to `rg-<environment-name>`; override with `azd env set AZURE_RESOURCE_GROUP <name>`. |
 | `AZURE_TARGET_SUBSCRIPTION_IDS` | No | Comma-separated subscriptions the RBAC scripts will grant the Function App's managed identity access to. The functions themselves scan every subscription the MI can see, so list every subscription you want monitored here. Defaults to the deployment subscription only. |
@@ -78,7 +78,7 @@ A manual (non-azd) deployment is also supported via [`infrastructure/scripts/Dep
 
 ### Verify ingestion
 
-After ~20 minutes, query the workspace:
+After ~20 minutes, query the workspace (table generation takes time):
 
 ```kusto
 QuotaSnapshot_CL    | take 10
@@ -94,7 +94,6 @@ azd down --purge
 ```
 
 > **Warning:** `azd down` deletes the **entire** resource group (azd uses a resource-group-scoped deployment). Deploy into a dedicated RG. The pre-provision hook warns if the target RG already contains non-azd resources.
-
 > **Note: portal-only deployment is not supported.**
 > The Data Collection Rules in [`data-collection.bicep`](infrastructure/modules/data-collection.bicep) are **direct-ingestion** DCRs (the Function App pushes JSON to the Logs Ingestion API). The Azure portal — both the new and the classic DCR creation experiences — only supports **agent-based** DCRs and always requires a `File pattern`, which does not apply here. Direct-ingestion DCRs must be created via Bicep/ARM, REST, or `az monitor data-collection rule create --rule-file`. If a click-through experience is required, deploy the compiled ARM template via *Portal → Deploy a custom template* (`az bicep build --file infrastructure/main.bicep`).
 
@@ -103,7 +102,7 @@ azd down --purge
 ### Documentation (`/docs` folder)
 
 | File | Description |
-|------|-------------|
+| ------ | ------------- |
 | [`Ingestion.md`](docs/Ingestion.md) | Covers the ingestion layer — compute, orchestration, and write patterns. Documents data streams (push-based vs pull-based), the Azure Functions design decision, watermark-based gap-fill, and change detection. |
 | [`KQL queries.md`](docs/KQL%20queries.md) | Power BI KQL queries for DirectQuery / Import against the Log Analytics workspace. Includes deduplication logic and step-by-step Power BI connection instructions. |
 | [`RBAC_REQUIREMENTS.md`](docs/RBAC_REQUIREMENTS.md) | Maps minimum Azure RBAC roles and permissions required to run the monitoring code. Includes least-privilege scope guidance for Log Analytics queries, Azure Monitor metrics API, and ARM API calls. Documents required roles for each operation with official Microsoft Learn links. |
@@ -116,7 +115,7 @@ The `demo/` folder contains illustrative material that is **not part of the depl
 #### Notebooks (`/demo/notebooks`)
 
 | File | Description |
-|------|-------------|
+| ------ | ------------- |
 | [`monitor-foundry.ipynb`](demo/notebooks/monitor-foundry.ipynb) | Original POC: collects quota, deployment, and token usage data across all subscriptions via Azure Monitor APIs. Visualizes subscription-level quotas, deployment rate limits, and hourly token usage with Plotly charts. Superseded by the deployed Functions in `src/`. |
 | [`monitor-foundry-example.ipynb`](demo/notebooks/monitor-foundry-example.ipynb) | Queries a Log Analytics workspace for `AzureMetrics` data from Foundry instances. Demonstrates the **push-based** path via diagnostic settings (the deployed solution does not consume `AzureMetrics`). Requires `demo/diagnostic-settings/Set-FoundryDiagnosticSettings.ps1` to have been run first. |
 
@@ -125,7 +124,7 @@ The `demo/` folder contains illustrative material that is **not part of the depl
 Timer-triggered functions that collect data from Azure APIs and write to custom Log Analytics tables via the Data Collection Rules pipeline. Uses watermark-based tracking for gap-fill on failure and change detection to avoid duplicate writes.
 
 | Function | Schedule | Custom Table | Description |
-|----------|----------|--------------|-------------|
+| ---------- | ---------- | -------------- | ------------- |
 | [`fn_quota_snapshot`](src/functions/quota_snapshot.py) | Hourly (at :20) | `QuotaSnapshot_CL` | Collects subscription-level quota and usage data per region/model from the ARM `/usages` endpoint. |
 | [`fn_deployment_config`](src/functions/deployment_config.py) | Hourly (at :05) | `DeploymentConfig_CL` | Collects deployment configurations (model, SKU, capacity, rate limits) per Cognitive Services instance. |
 | [`fn_token_usage`](src/functions/token_usage.py) | Hourly (at :35) | `TokenUsage_CL` | Collects per-deployment token metrics (prompt/generated tokens) from Azure Monitor Metrics API with a 30-min delay for metric finalization. |
@@ -136,7 +135,7 @@ Timer-triggered functions that collect data from Azure APIs and write to custom 
 Bicep modules deployed via `azd up` or the manual `Deploy-MonitoringInfra.ps1` script. See [`infrastructure/README.md`](infrastructure/README.md) for full deployment instructions.
 
 | Module | Description |
-|--------|-------------|
+| -------- | ------------- |
 | [`main.bicep`](infrastructure/main.bicep) | Orchestrator — uses an existing Log Analytics workspace or creates a new one. |
 | [`log-analytics.bicep`](infrastructure/modules/log-analytics.bicep) | New Log Analytics workspace (only when no existing workspace ID supplied). |
 | [`custom-tables.bicep`](infrastructure/modules/custom-tables.bicep) | Creates the 4 custom Log Analytics tables. |
@@ -147,7 +146,7 @@ Bicep modules deployed via `azd up` or the manual `Deploy-MonitoringInfra.ps1` s
 ### Demo PowerShell scripts (`/demo` folder)
 
 | File | Description |
-|------|-------------|
+| ------ | ------------- |
 | [`Set-FoundryDiagnosticSettings.ps1`](demo/diagnostic-settings/Set-FoundryDiagnosticSettings.ps1) | Discovers all Foundry resources and creates diagnostic settings to stream metrics to a Log Analytics workspace. Used by the example notebook only — the deployed Functions do not consume `AzureMetrics` / `AzureDiagnostics`. Supports `-Remove` and `-WhatIf`. |
 | [`Invoke-FoundryTrafficGenerator.ps1`](demo/load-tests/Invoke-FoundryTrafficGenerator.ps1) | Sends test requests to model deployments (chat completions, embeddings) across Foundry instances so dashboards have data. Supports parallel execution, multiple iterations, and `-WhatIf`. |
 | [`Invoke-FoundryLoadTest.ps1`](demo/load-tests/Invoke-FoundryLoadTest.ps1) | Interactive load-test tool to hammer a deployed model (produce 429s) — drills down into subscription → instance → deployment, then fires parallel requests. Supports chat completions and embeddings. |

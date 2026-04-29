@@ -69,6 +69,15 @@ if (-not $TargetSubscriptionIds.Count)    { throw 'TargetSubscriptionIds is requ
 if (-not $LogAnalyticsWorkspaceResourceId){ throw 'LogAnalyticsWorkspaceResourceId is required. Pass it as a parameter or set AZURE_LOG_ANALYTICS_WORKSPACE_ID.' }
 if (-not $DcrResourceIds.Count)           { throw 'DcrResourceIds is required. Pass them as a parameter or set AZURE_DCR_QUOTA_SNAPSHOT_ID, AZURE_DCR_DEPLOYMENT_CONFIG_ID, AZURE_DCR_TOKEN_USAGE_ID, AZURE_DCR_MODEL_CATALOG_ID.' }
 
+# Resolve a friendly display name for the target principal (best-effort).
+$principalDisplay = az ad sp show --id $PrincipalId --query displayName -o tsv 2>$null
+if (-not $principalDisplay) {
+    $principalDisplay = az ad user show --id $PrincipalId --query displayName -o tsv 2>$null
+}
+if (-not $principalDisplay) { $principalDisplay = '(unknown principal)' }
+
+Write-Host "Assigning roles to: $principalDisplay ($PrincipalId)" -ForegroundColor Cyan
+
 # Built-in role definition IDs
 $roles = @{
     MonitoringReader              = '43d0d8ad-25c7-4714-9337-8ba259a9fe05'
@@ -83,8 +92,11 @@ function Grant-RoleIfMissing {
         [string]$Scope,
         [string]$RoleId,
         [string]$RoleName,
-        [string]$Principal
+        [string]$Principal,
+        [string]$PrincipalDisplayName = ''
     )
+
+    $who = if ($PrincipalDisplayName) { "$PrincipalDisplayName ($Principal)" } else { $Principal }
 
     $existing = az role assignment list `
         --assignee $Principal `
@@ -93,12 +105,12 @@ function Grant-RoleIfMissing {
         --query "[].id" -o tsv 2>$null
 
     if ($existing) {
-        Write-Host "  [SKIP] $RoleName already assigned at scope: $Scope"
+        Write-Host "  [SKIP]   $RoleName — already assigned to $who at $Scope"
         return
     }
 
-    if ($PSCmdlet.ShouldProcess("$RoleName on $Scope", "Assign role")) {
-        Write-Host "  [ASSIGN] $RoleName at scope: $Scope"
+    if ($PSCmdlet.ShouldProcess("$RoleName on $Scope", "Assign role to $who")) {
+        Write-Host "  [ASSIGN] $RoleName — to $who at $Scope"
         az role assignment create `
             --assignee-object-id $Principal `
             --assignee-principal-type ServicePrincipal `
@@ -113,19 +125,19 @@ foreach ($subId in $TargetSubscriptionIds) {
     $scope = "/subscriptions/$subId"
     Write-Host "`nSubscription: $subId"
 
-    Grant-RoleIfMissing -Scope $scope -RoleId $roles.MonitoringReader              -RoleName 'Monitoring Reader'              -Principal $PrincipalId
-    Grant-RoleIfMissing -Scope $scope -RoleId $roles.CognitiveServicesUsagesReader -RoleName 'Cognitive Services Usages Reader' -Principal $PrincipalId
-    Grant-RoleIfMissing -Scope $scope -RoleId $roles.Reader                        -RoleName 'Reader'                          -Principal $PrincipalId
+    Grant-RoleIfMissing -Scope $scope -RoleId $roles.MonitoringReader              -RoleName 'Monitoring Reader'              -Principal $PrincipalId -PrincipalDisplayName $principalDisplay
+    Grant-RoleIfMissing -Scope $scope -RoleId $roles.CognitiveServicesUsagesReader -RoleName 'Cognitive Services Usages Reader' -Principal $PrincipalId -PrincipalDisplayName $principalDisplay
+    Grant-RoleIfMissing -Scope $scope -RoleId $roles.Reader                        -RoleName 'Reader'                          -Principal $PrincipalId -PrincipalDisplayName $principalDisplay
 }
 
 # 2. Log Analytics workspace
 Write-Host "`nLog Analytics workspace"
-Grant-RoleIfMissing -Scope $LogAnalyticsWorkspaceResourceId -RoleId $roles.LogAnalyticsDataReader -RoleName 'Log Analytics Data Reader' -Principal $PrincipalId
+Grant-RoleIfMissing -Scope $LogAnalyticsWorkspaceResourceId -RoleId $roles.LogAnalyticsDataReader -RoleName 'Log Analytics Data Reader' -Principal $PrincipalId -PrincipalDisplayName $principalDisplay
 
 # 3. DCR — Monitoring Metrics Publisher (allows writing via Logs Ingestion API)
 foreach ($dcrId in $DcrResourceIds) {
     Write-Host "`nDCR: $(Split-Path $dcrId -Leaf)"
-    Grant-RoleIfMissing -Scope $dcrId -RoleId $roles.MonitoringMetricsPublisher -RoleName 'Monitoring Metrics Publisher' -Principal $PrincipalId
+    Grant-RoleIfMissing -Scope $dcrId -RoleId $roles.MonitoringMetricsPublisher -RoleName 'Monitoring Metrics Publisher' -Principal $PrincipalId -PrincipalDisplayName $principalDisplay
 }
 
-Write-Host "`nDone." -ForegroundColor Green
+Write-Host "`nDone (principal: $principalDisplay)." -ForegroundColor Green

@@ -5,7 +5,7 @@ Deploys the monitoring infrastructure for collecting quota, deployment config, a
 ## What gets deployed
 
 | Resource | Purpose | Optional? |
-|---|---|---|
+| --- | --- | --- |
 | Log Analytics workspace | Stores all monitoring data | Only when no existing workspace ID is supplied |
 | Data Collection Endpoint (DCE) | HTTPS ingress for custom table writes | No |
 | 4 × Data Collection Rules (DCR) | Schema + routing for `QuotaSnapshot_CL`, `DeploymentConfig_CL`, `TokenUsage_CL`, `ModelCatalog_CL` | No |
@@ -26,7 +26,7 @@ Deploys the monitoring infrastructure for collecting quota, deployment config, a
 ### Azure permissions for the **deploying user**
 
 | Scope | Role | Why |
-|---|---|---|
+| --- | --- | --- |
 | Deployment resource group | **Contributor** | Create the storage account, App Insights, Function App, DCE, DCRs, and (optionally) the Log Analytics workspace and alert resources. |
 | Workspace's resource group (only if reusing an existing workspace in a *different* RG) | **Contributor** on that RG — or at minimum `Microsoft.OperationalInsights/workspaces/tables/write` on the workspace | Custom `*_CL` tables are created on the workspace. |
 | Each target subscription, the workspace, and each DCR | **User Access Administrator** (or **Owner**) | Required by `Assign-MonitoringRbac.ps1` to grant the Function App's managed identity the roles below. **Skip this if** the RBAC step will be handed off to a separate admin (set `AZURE_ASSIGN_RBAC=false`). |
@@ -36,7 +36,7 @@ Deploys the monitoring infrastructure for collecting quota, deployment config, a
 The post-provision RBAC script grants the MI:
 
 | Scope | Role |
-|---|---|
+| --- | --- |
 | Each target subscription | `Reader`, `Monitoring Reader`, `Cognitive Services Usages Reader` |
 | Log Analytics workspace | `Log Analytics Data Reader` |
 | Each DCR | `Monitoring Metrics Publisher` |
@@ -80,6 +80,7 @@ azd env set AZURE_ALERT_EMAIL "platformteam@contoso.com"
 ```
 
 `azd up` runs `azd provision` + `azd deploy`. The post-provision hook automatically:
+
 1. Assigns RBAC roles to the Function App's managed identity
 2. Assigns RBAC roles to your local developer identity (for `func host start`)
 3. Generates `src/local.settings.json` from Bicep outputs
@@ -112,7 +113,7 @@ No extra setup needed — `local.settings.json` and RBAC are configured by the p
 Optional parameters (with defaults):
 
 | Parameter | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `-ResourceGroupName` | `rg-ai-monitoring` | Resource group name |
 | `-Location` | `swedencentral` | Azure region |
 | `-LogAnalyticsWorkspaceId` | *(empty)* | Existing workspace ARM ID. Empty ⇒ create new |
@@ -162,7 +163,7 @@ infrastructure/
 ### QuotaSnapshot_CL
 
 | Column | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `timestamp_t` | datetime | Point-in-time of the snapshot |
 | `subscriptionId_s` | string | Azure subscription ID |
 | `subscriptionName_s` | string | Subscription display name |
@@ -175,7 +176,7 @@ infrastructure/
 ### DeploymentConfig_CL
 
 | Column | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `subscriptionId_s` | string | Azure subscription ID |
 | `resourceId_s` | string | Full ARM resource ID of the Cognitive Services account |
 | `resourceName_s` | string | Resource display name |
@@ -192,7 +193,7 @@ infrastructure/
 ### TokenUsage_CL
 
 | Column | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `timestamp_t` | datetime | Start of the 5-minute interval |
 | `subscriptionId_s` | string | Azure subscription ID |
 | `resourceId_s` | string | Full ARM resource ID |

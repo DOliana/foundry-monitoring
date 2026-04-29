@@ -92,8 +92,11 @@ function Grant-RoleIfMissing {
         [string]$RoleId,
         [string]$RoleName,
         [string]$Principal,
-        [string]$PrincipalType = 'User'
+        [string]$PrincipalType = 'User',
+        [string]$PrincipalDisplayName = ''
     )
+
+    $who = if ($PrincipalDisplayName) { "$PrincipalDisplayName ($Principal)" } else { $Principal }
 
     $existing = az role assignment list `
         --assignee $Principal `
@@ -102,12 +105,12 @@ function Grant-RoleIfMissing {
         --query "[].id" -o tsv 2>$null
 
     if ($existing) {
-        Write-Host "  [SKIP] $RoleName already assigned"
+        Write-Host "  [SKIP]   $RoleName — already assigned to $who"
         return
     }
 
-    if ($PSCmdlet.ShouldProcess("$RoleName on $Scope", "Assign role")) {
-        Write-Host "  [ASSIGN] $RoleName"
+    if ($PSCmdlet.ShouldProcess("$RoleName on $Scope", "Assign role to $who")) {
+        Write-Host "  [ASSIGN] $RoleName — to $who"
         az role assignment create `
             --assignee-object-id $Principal `
             --assignee-principal-type $PrincipalType `
@@ -122,26 +125,26 @@ foreach ($subId in $TargetSubscriptionIds) {
     $scope = "/subscriptions/$subId"
     Write-Host "`nSubscription: $subId"
 
-    Grant-RoleIfMissing -Scope $scope -RoleId $roles.MonitoringReader              -RoleName 'Monitoring Reader'              -Principal $userObjectId
-    Grant-RoleIfMissing -Scope $scope -RoleId $roles.CognitiveServicesUsagesReader -RoleName 'Cognitive Services Usages Reader' -Principal $userObjectId
-    Grant-RoleIfMissing -Scope $scope -RoleId $roles.Reader                        -RoleName 'Reader'                          -Principal $userObjectId
+    Grant-RoleIfMissing -Scope $scope -RoleId $roles.MonitoringReader              -RoleName 'Monitoring Reader'              -Principal $userObjectId -PrincipalDisplayName $userName
+    Grant-RoleIfMissing -Scope $scope -RoleId $roles.CognitiveServicesUsagesReader -RoleName 'Cognitive Services Usages Reader' -Principal $userObjectId -PrincipalDisplayName $userName
+    Grant-RoleIfMissing -Scope $scope -RoleId $roles.Reader                        -RoleName 'Reader'                          -Principal $userObjectId -PrincipalDisplayName $userName
 }
 
 # 2. Log Analytics workspace
 Write-Host "`nLog Analytics workspace"
-Grant-RoleIfMissing -Scope $LogAnalyticsWorkspaceResourceId -RoleId $roles.LogAnalyticsDataReader -RoleName 'Log Analytics Data Reader' -Principal $userObjectId
+Grant-RoleIfMissing -Scope $LogAnalyticsWorkspaceResourceId -RoleId $roles.LogAnalyticsDataReader -RoleName 'Log Analytics Data Reader' -Principal $userObjectId -PrincipalDisplayName $userName
 
 # 3. DCRs — Monitoring Metrics Publisher
 foreach ($dcrId in $DcrResourceIds) {
     Write-Host "`nDCR: $(Split-Path $dcrId -Leaf)"
-    Grant-RoleIfMissing -Scope $dcrId -RoleId $roles.MonitoringMetricsPublisher -RoleName 'Monitoring Metrics Publisher' -Principal $userObjectId
+    Grant-RoleIfMissing -Scope $dcrId -RoleId $roles.MonitoringMetricsPublisher -RoleName 'Monitoring Metrics Publisher' -Principal $userObjectId -PrincipalDisplayName $userName
 }
 
 # 4. Storage account — roles for local function execution
 $storageScope = "/subscriptions/$($TargetSubscriptionIds[0])/resourceGroups/$ResourceGroupName/providers/Microsoft.Storage/storageAccounts/$StorageAccountName"
 Write-Host "`nStorage account: $StorageAccountName"
-Grant-RoleIfMissing -Scope $storageScope -RoleId $roles.StorageBlobDataOwner        -RoleName 'Storage Blob Data Owner'        -Principal $userObjectId
-Grant-RoleIfMissing -Scope $storageScope -RoleId $roles.StorageTableDataContributor -RoleName 'Storage Table Data Contributor' -Principal $userObjectId
-Grant-RoleIfMissing -Scope $storageScope -RoleId $roles.StorageQueueDataContributor -RoleName 'Storage Queue Data Contributor' -Principal $userObjectId
+Grant-RoleIfMissing -Scope $storageScope -RoleId $roles.StorageBlobDataOwner        -RoleName 'Storage Blob Data Owner'        -Principal $userObjectId -PrincipalDisplayName $userName
+Grant-RoleIfMissing -Scope $storageScope -RoleId $roles.StorageTableDataContributor -RoleName 'Storage Table Data Contributor' -Principal $userObjectId -PrincipalDisplayName $userName
+Grant-RoleIfMissing -Scope $storageScope -RoleId $roles.StorageQueueDataContributor -RoleName 'Storage Queue Data Contributor' -Principal $userObjectId -PrincipalDisplayName $userName
 
-Write-Host "`nDone. You can now run 'func host start' locally." -ForegroundColor Green
+Write-Host "`nDone (principal: $userName). You can now run 'func host start' locally." -ForegroundColor Green
