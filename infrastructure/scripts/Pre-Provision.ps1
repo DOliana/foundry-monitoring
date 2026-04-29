@@ -72,9 +72,11 @@ try {
 } catch { }
 
 if (-not $targetSubsExists) {
-    Write-Host "`n  Target subscription IDs are used by the RBAC scripts to assign" -ForegroundColor DarkGray
-    Write-Host "  monitoring permissions across subscriptions. Leave empty to skip" -ForegroundColor DarkGray
-    Write-Host "  (defaults to the deployment subscription).`n" -ForegroundColor DarkGray
+    Write-Host "`n  Target subscription IDs scope the RBAC scripts — the Function App's" -ForegroundColor DarkGray
+    Write-Host "  managed identity will be granted Reader / Monitoring Reader / Cognitive" -ForegroundColor DarkGray
+    Write-Host "  Services Usages Reader on each one. At runtime the functions scan every" -ForegroundColor DarkGray
+    Write-Host "  subscription the MI can see, so list every subscription you want monitored." -ForegroundColor DarkGray
+    Write-Host "  Leave empty to grant access only to the deployment subscription.`n" -ForegroundColor DarkGray
     try {
         $value = Read-Host 'Comma-separated subscription IDs to monitor (empty to skip)'
     } catch {
@@ -85,9 +87,80 @@ if (-not $targetSubsExists) {
         azd env set AZURE_TARGET_SUBSCRIPTION_IDS $value
         Write-Host "  Set AZURE_TARGET_SUBSCRIPTION_IDS=$value" -ForegroundColor Green
     } else {
-        Write-Host "  Skipped — RBAC scripts will use the deployment subscription only." -ForegroundColor DarkGray
+        Write-Host "  Skipped — RBAC will be granted on the deployment subscription only." -ForegroundColor DarkGray
     }
 } else {
     Write-Host "  AZURE_TARGET_SUBSCRIPTION_IDS = $targetSubs" -ForegroundColor DarkGray
+}
+
+# ── Log Analytics workspace (optional — empty means "create a new one") ──────
+Write-Host ""
+$workspaceId = $null
+$workspaceIdExists = $false
+try {
+    $workspaceId = azd env get-value AZURE_LOG_ANALYTICS_WORKSPACE_ID 2>&1
+    if ($LASTEXITCODE -eq 0 -and $workspaceId) { $workspaceIdExists = $true }
+} catch { }
+
+if (-not $workspaceIdExists) {
+    Write-Host "  Log Analytics workspace — paste the ARM resource ID of an existing" -ForegroundColor DarkGray
+    Write-Host "  workspace, or leave empty to create a new one in the deployment RG." -ForegroundColor DarkGray
+    try {
+        $value = Read-Host 'Existing Log Analytics workspace resource ID (empty to create new)'
+    } catch {
+        Write-Host "`n  Aborted." -ForegroundColor Yellow
+        exit 1
+    }
+    if ($value) {
+        azd env set AZURE_LOG_ANALYTICS_WORKSPACE_ID $value
+        Write-Host "  Set AZURE_LOG_ANALYTICS_WORKSPACE_ID" -ForegroundColor Green
+    } else {
+        Write-Host "  A new workspace will be created (name defaults to <prefix>-law)." -ForegroundColor DarkGray
+    }
+} else {
+    Write-Host "  AZURE_LOG_ANALYTICS_WORKSPACE_ID is set." -ForegroundColor DarkGray
+}
+
+# ── Optional alerts (Action Group + Function-failure rule) ───────────────────
+Write-Host ""
+$deployAlerts = $null
+$deployAlertsExists = $false
+try {
+    $deployAlerts = azd env get-value AZURE_DEPLOY_ALERTS 2>&1
+    if ($LASTEXITCODE -eq 0 -and $deployAlerts) { $deployAlertsExists = $true }
+} catch { }
+
+if (-not $deployAlertsExists) {
+    try {
+        $response = Read-Host '  Deploy Action Group + Function-failure alert rule? (y/N)'
+    } catch {
+        Write-Host "`n  Aborted." -ForegroundColor Yellow
+        exit 1
+    }
+    if ($response -in @('y', 'Y', 'yes', 'Yes')) {
+        azd env set AZURE_DEPLOY_ALERTS true
+
+        $alertEmail = $null
+        try { $alertEmail = azd env get-value AZURE_ALERT_EMAIL 2>$null } catch { }
+        if (-not $alertEmail) {
+            try {
+                $alertEmail = Read-Host '  Email recipient for alerts'
+            } catch {
+                Write-Host "`n  Aborted." -ForegroundColor Yellow
+                exit 1
+            }
+            if (-not $alertEmail) {
+                Write-Host "  Alerts enabled but no email supplied — Bicep deployment will fail." -ForegroundColor Yellow
+            } else {
+                azd env set AZURE_ALERT_EMAIL $alertEmail
+                Write-Host "  Set AZURE_ALERT_EMAIL=$alertEmail" -ForegroundColor Green
+            }
+        }
+    } else {
+        azd env set AZURE_DEPLOY_ALERTS false
+        Write-Host "  Alerts skipped." -ForegroundColor DarkGray
+    }
+} else {
+    Write-Host "  AZURE_DEPLOY_ALERTS = $deployAlerts" -ForegroundColor DarkGray
 }
 

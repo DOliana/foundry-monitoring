@@ -4,21 +4,49 @@ Deploys the monitoring infrastructure for collecting quota, deployment config, a
 
 ## What gets deployed
 
-| Resource | Purpose |
-|---|---|
-| Data Collection Endpoint (DCE) | HTTPS ingress for custom table writes |
-| 3 × Data Collection Rules (DCR) | Schema + routing for `QuotaSnapshot_CL`, `DeploymentConfig_CL`, `TokenUsage_CL` |
-| Storage Account | Function App backing store + watermark table |
-| Application Insights | Function App telemetry (linked to existing Log Analytics workspace) |
-| Function App (Flex Consumption) | Hosts the 3 timer-triggered ingestion functions |
-| Action Group + Alert Rule | Email notification on function failures |
+| Resource | Purpose | Optional? |
+|---|---|---|
+| Log Analytics workspace | Stores all monitoring data | Only when no existing workspace ID is supplied |
+| Data Collection Endpoint (DCE) | HTTPS ingress for custom table writes | No |
+| 4 × Data Collection Rules (DCR) | Schema + routing for `QuotaSnapshot_CL`, `DeploymentConfig_CL`, `TokenUsage_CL`, `ModelCatalog_CL` | No |
+| 4 × Custom Log Analytics tables | `*_CL` schemas in the workspace | No |
+| Storage Account | Function App backing store + watermark table | No |
+| Application Insights | Function App telemetry (linked to the workspace) | No |
+| Function App (Flex Consumption) | Hosts the 4 timer-triggered ingestion functions | No |
+| Action Group + Alert Rule | Email notification on function failures | Yes — `deployAlerts` parameter (default `false`) |
 
 ## Prerequisites
 
-- An **existing Log Analytics workspace** — its full resource ID is required
+### Tooling
+
 - [Azure Developer CLI (`azd`)](https://aka.ms/azd) installed
 - Azure CLI with Bicep support (`az bicep version` ≥ 0.30)
-- Permissions: Contributor on the target resource group, User Access Administrator for RBAC
+- PowerShell 7+ (provision hooks)
+
+### Azure permissions for the **deploying user**
+
+| Scope | Role | Why |
+|---|---|---|
+| Deployment resource group | **Contributor** | Create the storage account, App Insights, Function App, DCE, DCRs, and (optionally) the Log Analytics workspace and alert resources. |
+| Workspace's resource group (only if reusing an existing workspace in a *different* RG) | **Contributor** on that RG — or at minimum `Microsoft.OperationalInsights/workspaces/tables/write` on the workspace | Custom `*_CL` tables are created on the workspace. |
+| Each target subscription, the workspace, and each DCR | **User Access Administrator** (or **Owner**) | Required by `Assign-MonitoringRbac.ps1` to grant the Function App's managed identity the roles below. **Skip this if** the RBAC step will be handed off to a separate admin (set `AZURE_ASSIGN_RBAC=false`). |
+
+### Roles assigned to the Function App's managed identity
+
+The post-provision RBAC script grants the MI:
+
+| Scope | Role |
+|---|---|
+| Each target subscription | `Reader`, `Monitoring Reader`, `Cognitive Services Usages Reader` |
+| Log Analytics workspace | `Log Analytics Data Reader` |
+| Each DCR | `Monitoring Metrics Publisher` |
+| Storage Account (deployed by Bicep) | `Storage Blob Data Owner`, `Storage Table Data Contributor`, `Storage Queue Data Contributor` — already wired into `function-app.bicep`, no admin perms needed |
+
+Full mapping (with API actions and links): [`docs/RBAC_REQUIREMENTS.md`](../docs/RBAC_REQUIREMENTS.md).
+
+### Optional: an existing Log Analytics workspace
+
+If none is provided, the deployment creates a new one named `<prefix>-law` in the deployment resource group.
 
 ## Deploy with azd (recommended)
 
@@ -28,14 +56,27 @@ azd init
 azd up
 ```
 
-`azd` automatically prompts for the two mandatory Bicep parameters (`logAnalyticsWorkspaceId` and `alertEmail`) if they aren't already set. You can also pre-set them:
+`azd` prompts on the first run for the standard inputs — **environment name**, **Azure subscription**, **region**, and the mandatory `prefix` parameter (lowercase, 2–8 chars) — and stores them in the azd environment. The resource-group name defaults to `rg-<environment-name>` (override with `azd env set AZURE_RESOURCE_GROUP <name>` before `azd up`). The pre-provision hook then prompts interactively for:
+
+- **Target subscriptions** (`AZURE_TARGET_SUBSCRIPTION_IDS`) — comma-separated list of subscriptions the RBAC scripts will grant the Function App's managed identity access to. At runtime the functions scan every subscription the managed identity can see, so any subscription you want monitored must be listed here. Leave empty to grant access only to the deployment subscription.
+- **Existing Log Analytics workspace** (`AZURE_LOG_ANALYTICS_WORKSPACE_ID`) — leave empty to create a new workspace.
+- **Deploy alerts?** (`AZURE_DEPLOY_ALERTS`) — if yes, prompts for `AZURE_ALERT_EMAIL`.
+
+### Skipping the RBAC step
+
+If the deploying user does not have **User Access Administrator** on the target subscriptions, workspace, and DCRs, set `AZURE_ASSIGN_RBAC=false` to skip the post-provision role assignments. The deployment will succeed, but the Function App's managed identity will not yet be able to read from target subscriptions or write to the DCRs — a separate admin must run `infrastructure/scripts/Assign-MonitoringRbac.ps1` afterwards (it reads all required IDs from azd outputs).
 
 ```bash
-azd env set AZURE_LOG_ANALYTICS_WORKSPACE_ID "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{name}"
-azd env set AZURE_ALERT_EMAIL "platformteam@contoso.com"
+azd env set AZURE_ASSIGN_RBAC false   # default: true
+```
 
-# Optional — defaults to the deployment subscription if not set
-# azd env set AZURE_TARGET_SUBSCRIPTION_IDS "sub-id-1,sub-id-2,sub-id-3"
+You can pre-set any of these to skip the prompts:
+
+```bash
+azd env set AZURE_TARGET_SUBSCRIPTION_IDS "sub-id-1,sub-id-2"
+azd env set AZURE_LOG_ANALYTICS_WORKSPACE_ID "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{name}"
+azd env set AZURE_DEPLOY_ALERTS true
+azd env set AZURE_ALERT_EMAIL "platformteam@contoso.com"
 ```
 
 `azd up` runs `azd provision` + `azd deploy`. The post-provision hook automatically:
@@ -55,10 +96,17 @@ No extra setup needed — `local.settings.json` and RBAC are configured by the p
 ## Deploy manually (alternative)
 
 ```powershell
+# Minimal: create a new workspace, no alerts
 ./scripts/Deploy-MonitoringInfra.ps1 `
+    -Prefix "aimon" `
+    -TargetSubscriptionIds @("sub-id-1", "sub-id-2")
+
+# With existing workspace + alerts
+./scripts/Deploy-MonitoringInfra.ps1 `
+    -Prefix "aimon" `
     -LogAnalyticsWorkspaceId "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{name}" `
-    -AlertEmail "platformteam@contoso.com" `
-    -TargetSubscriptionIds @("sub-id-1", "sub-id-2", "sub-id-3")
+    -DeployAlerts -AlertEmail "platformteam@contoso.com" `
+    -TargetSubscriptionIds @("sub-id-1", "sub-id-2")
 ```
 
 Optional parameters (with defaults):
@@ -67,10 +115,17 @@ Optional parameters (with defaults):
 |---|---|---|
 | `-ResourceGroupName` | `rg-ai-monitoring` | Resource group name |
 | `-Location` | `swedencentral` | Azure region |
-| `-Prefix` | `heaip` | Naming prefix |
+| `-LogAnalyticsWorkspaceId` | *(empty)* | Existing workspace ARM ID. Empty ⇒ create new |
+| `-WorkspaceName` | `<prefix>-law` | Name for the new workspace (ignored when reusing existing) |
+| `-WorkspaceRetentionDays` | `30` | Retention for the new workspace (7–730) |
+| `-WorkspaceSku` | `PerGB2018` | Pricing SKU for the new workspace |
+| `-DeployAlerts` | `$false` | Switch — deploy Action Group + alert rule |
+| `-AlertEmail` | *(empty)* | Required when `-DeployAlerts` is set |
 | `-Environment` | `DEV` | Environment tag |
 | `-MaxParallelSubs` | `5` | Concurrency limit |
-| `-SkipRbac` | `$false` | Skip RBAC step (for re-deploys) |
+| `-SkipRbac` | `$false` | Skip RBAC step (for re-deploys, or hand off to a separate admin) |
+
+Every Bicep parameter is exposed as a `Deploy-MonitoringInfra.ps1` switch — the manual path does not require any interactive prompts.
 
 Then set up local development manually:
 
@@ -88,10 +143,11 @@ Then set up local development manually:
 infrastructure/
 ├── main.bicep                  # Orchestrator (azd prompts for mandatory params)
 ├── modules/
-│   ├── custom-tables.bicep     # 3 custom Log Analytics tables
-│   ├── data-collection.bicep   # DCE + 3 DCRs
+│   ├── log-analytics.bicep     # Log Analytics workspace (created only when no existing ID supplied)
+│   ├── custom-tables.bicep     # 4 custom Log Analytics tables
+│   ├── data-collection.bicep   # DCE + 4 DCRs
 │   ├── function-app.bicep      # Storage + App Insights + Function App
-│   └── alerts.bicep            # Alert rules + action group
+│   └── alerts.bicep            # Optional Action Group + alert rule (deployAlerts=true)
 ├── scripts/
 │   ├── Post-Provision.ps1        # azd postprovision hook (orchestrates steps below)
 │   ├── Assign-MonitoringRbac.ps1  # RBAC for Function App managed identity

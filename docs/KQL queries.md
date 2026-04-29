@@ -27,8 +27,6 @@ Connect to each table by:
 6. Optionally use "transform data" to remove unwanted columns or adapt column types
 7. Make sure the table name is correct (will be Query X by default)
 
-https://ade.loganalytics.io/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/aigw/providers/microsoft.operationalinsights/workspaces/aigw-mon-ch
-
 ## Understanding the deduplication problem
 
 | Table | Natural key | Why duplicates occur |

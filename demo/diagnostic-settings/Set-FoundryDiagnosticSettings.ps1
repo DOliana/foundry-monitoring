@@ -4,6 +4,13 @@
     to a central Log Analytics workspace.
 
 .DESCRIPTION
+    DEMO ASSET — NOT REQUIRED BY THE DEPLOYED SOLUTION.
+
+    The deployed Functions in /src write to custom *_CL tables via the Logs Ingestion
+    API. They do not consume the AzureMetrics or AzureDiagnostics tables produced by
+    this script. Run this only when you want to explore the push-based path used by
+    /demo/notebooks/monitor-foundry-example.ipynb.
+
     This script discovers all Azure AI Foundry-related resources across the current
     subscription (or all accessible subscriptions) and creates diagnostic settings
     to forward all platform metrics to a selected Log Analytics workspace.

@@ -135,6 +135,6 @@ flowchart TB
 | `fn_token_usage` | Every 1 hour (30-min delay) | Azure Monitor Metrics API | `TokenUsage_CL` |
 | `fn_model_catalog` | Daily at 06:00 UTC | ARM model catalog API | `ModelCatalog_CL` |
 
-**Push-based telemetry** — Diagnostic Settings on each Azure AI Foundry / Cognitive Services instance stream platform metrics and per-request logs directly to `AzureMetrics` and `AzureDiagnostics` tables.
+**Push-based telemetry (sample / not deployed)** — Azure AI Foundry / Cognitive Services resources can emit platform metrics and per-request logs to `AzureMetrics` and `AzureDiagnostics` via Diagnostic Settings. **The deployed solution does not consume those tables** — it relies entirely on the four custom `*_CL` tables above. The push-based path is illustrated only by [`demo/notebooks/monitor-foundry-example.ipynb`](../demo/notebooks/monitor-foundry-example.ipynb), which requires [`demo/diagnostic-settings/Set-FoundryDiagnosticSettings.ps1`](../demo/diagnostic-settings/Set-FoundryDiagnosticSettings.ps1) to be run first.
 
-**Monitoring** — Application Insights collects function telemetry. Scheduled query alert rules monitor for failures and notify via an Action Group (email).
+**Monitoring** — Application Insights collects function telemetry. When `deployAlerts=true`, a scheduled query alert rule monitors for failures and notifies via an Action Group (email). Alerts are off by default.

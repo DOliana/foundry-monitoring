@@ -18,16 +18,21 @@
     Azure region. Default: swedencentral
 
 .PARAMETER LogAnalyticsWorkspaceId
-    Mandatory. Full resource ID of the existing Log Analytics workspace.
+    Optional. Full resource ID of an existing Log Analytics workspace. If omitted, a new
+    workspace named '<prefix>-law' is created in the deployment resource group.
+
+.PARAMETER DeployAlerts
+    Optional switch. When set, deploys the Action Group and Function-failure alert rule.
+    Requires -AlertEmail.
 
 .PARAMETER AlertEmail
-    Mandatory. Email address for alert notifications.
+    Optional. Email address for alert notifications. Required when -DeployAlerts is supplied.
 
 .PARAMETER TargetSubscriptionIds
     Mandatory. Array of subscription IDs the monitoring functions will scan.
 
 .PARAMETER Prefix
-    Optional. Naming prefix. Default: heaip
+    Mandatory. Naming prefix (lowercase, 2-8 chars).
 
 .PARAMETER Environment
     Optional. Environment tag. Default: DEV
@@ -43,9 +48,14 @@
 
 .EXAMPLE
     .\Deploy-MonitoringInfra.ps1 `
+        -Prefix "aimon" `
         -LogAnalyticsWorkspaceId "/subscriptions/aaaa/resourceGroups/rg-shared/providers/Microsoft.OperationalInsights/workspaces/my-workspace" `
-        -AlertEmail "platformteam@contoso.com" `
+        -DeployAlerts -AlertEmail "platformteam@contoso.com" `
         -TargetSubscriptionIds @("sub-1111-aaaa", "sub-2222-bbbb", "sub-3333-cccc")
+
+.EXAMPLE
+    # Create a new workspace in the deployment RG; no alerts
+    .\Deploy-MonitoringInfra.ps1 -Prefix "aimon" -TargetSubscriptionIds @("sub-1111")
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
@@ -54,16 +64,26 @@ param(
 
     [string]$Location = 'swedencentral',
 
-    [Parameter(Mandatory)]
-    [string]$LogAnalyticsWorkspaceId,
+    [string]$LogAnalyticsWorkspaceId = '',
 
-    [Parameter(Mandatory)]
-    [string]$AlertEmail,
+    [string]$WorkspaceName = '',
+
+    [ValidateRange(7, 730)]
+    [int]$WorkspaceRetentionDays = 30,
+
+    [ValidateSet('PerGB2018', 'CapacityReservation', 'Standalone', 'PerNode', 'Standard', 'Premium')]
+    [string]$WorkspaceSku = 'PerGB2018',
+
+    [switch]$DeployAlerts,
+
+    [string]$AlertEmail = '',
 
     [Parameter(Mandatory)]
     [string[]]$TargetSubscriptionIds,
 
-    [string]$Prefix = 'heaip',
+    [Parameter(Mandatory)]
+    [ValidateLength(2, 8)]
+    [string]$Prefix,
 
     [ValidateSet('DEV', 'TEST', 'PROD')]
     [string]$Environment = 'DEV',
@@ -75,6 +95,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($DeployAlerts -and -not $AlertEmail) {
+    throw '-AlertEmail is required when -DeployAlerts is set.'
+}
 
 $scriptDir = $PSScriptRoot
 
@@ -108,11 +132,16 @@ $deployArgs = @(
     "location=$Location"
     "prefix=$Prefix"
     "environment=$Environment"
-    "logAnalyticsWorkspaceId=$LogAnalyticsWorkspaceId"
-    "alertEmail=$AlertEmail"
     "maxParallelSubs=$MaxParallelSubs"
+    "deployAlerts=$([string]([bool]$DeployAlerts).ToString().ToLower())"
     '--output', 'json'
 )
+
+if ($LogAnalyticsWorkspaceId) { $deployArgs += "logAnalyticsWorkspaceId=$LogAnalyticsWorkspaceId" }
+if ($WorkspaceName)           { $deployArgs += "workspaceName=$WorkspaceName" }
+$deployArgs += "workspaceRetentionDays=$WorkspaceRetentionDays"
+$deployArgs += "workspaceSku=$WorkspaceSku"
+if ($AlertEmail)              { $deployArgs += "alertEmail=$AlertEmail" }
 
 if ($PSCmdlet.ShouldProcess($bicepFile, 'Deploy Bicep template')) {
     Write-Host "  Deploying main.bicep (deployment: $deploymentName)..."
@@ -137,10 +166,12 @@ if ($SkipRbac) {
 } else {
     Write-Host "`n=== Step 3/3: RBAC assignment ===" -ForegroundColor Cyan
 
-    $principalId = $deployOutput.properties.outputs.aZURE_FUNCTION_APP_PRINCIPAL_ID.value
-    $dcrQuota    = $deployOutput.properties.outputs.aZURE_DCR_QUOTA_SNAPSHOT_ID.value
-    $dcrDeploy   = $deployOutput.properties.outputs.aZURE_DCR_DEPLOYMENT_CONFIG_ID.value
-    $dcrToken    = $deployOutput.properties.outputs.aZURE_DCR_TOKEN_USAGE_ID.value
+    $principalId   = $deployOutput.properties.outputs.aZURE_FUNCTION_APP_PRINCIPAL_ID.value
+    $effectiveWsId = $deployOutput.properties.outputs.aZURE_LOG_ANALYTICS_WORKSPACE_ID.value
+    $dcrQuota      = $deployOutput.properties.outputs.aZURE_DCR_QUOTA_SNAPSHOT_ID.value
+    $dcrDeploy     = $deployOutput.properties.outputs.aZURE_DCR_DEPLOYMENT_CONFIG_ID.value
+    $dcrToken      = $deployOutput.properties.outputs.aZURE_DCR_TOKEN_USAGE_ID.value
+    $dcrModel      = $deployOutput.properties.outputs.aZURE_DCR_MODEL_CATALOG_ID.value
 
     Write-Host "  Function App principal ID: $principalId"
     Write-Host "  Target subscriptions: $($TargetSubscriptionIds -join ', ')"
@@ -148,10 +179,10 @@ if ($SkipRbac) {
     $rbacScript = Join-Path $scriptDir 'Assign-MonitoringRbac.ps1'
 
     $rbacArgs = @{
-        PrincipalId                    = $principalId
-        TargetSubscriptionIds          = $TargetSubscriptionIds
-        LogAnalyticsWorkspaceResourceId = $LogAnalyticsWorkspaceId
-        DcrResourceIds                 = @($dcrQuota, $dcrDeploy, $dcrToken)
+        PrincipalId                     = $principalId
+        TargetSubscriptionIds           = $TargetSubscriptionIds
+        LogAnalyticsWorkspaceResourceId = $effectiveWsId
+        DcrResourceIds                  = @($dcrQuota, $dcrDeploy, $dcrToken, $dcrModel)
     }
 
     & $rbacScript @rbacArgs
