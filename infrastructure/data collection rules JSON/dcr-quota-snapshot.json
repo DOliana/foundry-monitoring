@@ -1,0 +1,38 @@
+{
+    "location": "<YOUR_LOCATION>",
+    "tags": {},
+    "properties": {
+        "dataCollectionEndpointId": "/subscriptions/<YOUR_SUBSCRIPTION_ID>/resourceGroups/<YOUR_RESOURCE_GROUP>/providers/Microsoft.Insights/dataCollectionEndpoints/<YOUR_DCE_NAME>",
+        "streamDeclarations": {
+            "Custom-QuotaSnapshot_CL": {
+                "columns": [
+                    { "name": "TimeGenerated",      "type": "datetime" },
+                    { "name": "timestamp_t",         "type": "datetime" },
+                    { "name": "subscriptionId_s",    "type": "string" },
+                    { "name": "subscriptionName_s",  "type": "string" },
+                    { "name": "region_s",            "type": "string" },
+                    { "name": "model_s",             "type": "string" },
+                    { "name": "deployedTPM_d",       "type": "real" },
+                    { "name": "maxTPM_d",            "type": "real" },
+                    { "name": "utilizationPct_d",    "type": "real" }
+                ]
+            }
+        },
+        "destinations": {
+            "logAnalytics": [
+                {
+                    "workspaceResourceId": "/subscriptions/<YOUR_SUBSCRIPTION_ID>/resourceGroups/<YOUR_RESOURCE_GROUP>/providers/Microsoft.OperationalInsights/workspaces/<YOUR_WORKSPACE_NAME>",
+                    "name": "logAnalytics"
+                }
+            ]
+        },
+        "dataFlows": [
+            {
+                "streams": [ "Custom-QuotaSnapshot_CL" ],
+                "destinations": [ "logAnalytics" ],
+                "transformKql": "source",
+                "outputStream": "Custom-QuotaSnapshot_CL"
+            }
+        ]
+    }
+}

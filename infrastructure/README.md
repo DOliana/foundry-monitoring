@@ -141,6 +141,17 @@ Optional parameters (with defaults):
 
 Every Bicep parameter is exposed as a `Deploy-MonitoringInfra.ps1` switch — the manual path does not require any interactive prompts.
 
+### Standalone DCR JSON files
+
+If the DCRs need to be deployed into existing infrastructure, the folder `infrastructure/data collection rules JSON/` contains standalone JSON request bodies for the four DCRs:
+
+- `dcr-quota-snapshot.json`
+- `dcr-deployment-config.json`
+- `dcr-token-snapshot.json`
+- `dcr-model-catalog.json`
+
+These files are intended for customers who cannot use ARM/Bicep but still need to create the DCRs and wire them into an existing Data Collection Endpoint and Log Analytics workspace. Replace the `<YOUR_*>` placeholders, then use the files with the Azure portal, Azure CLI, or the Azure Monitor REST API.
+
 Then set up local development manually:
 
 ```powershell
@@ -153,9 +164,10 @@ Then set up local development manually:
 
 ## File structure
 
-```
+```text
 infrastructure/
 ├── main.bicep                  # Orchestrator (azd prompts for mandatory params)
+├── data collection rules JSON/ # Standalone DCR JSON bodies for integration into existing infrastructure
 ├── modules/
 │   ├── log-analytics.bicep     # Log Analytics workspace (created only when no existing ID supplied)
 │   ├── custom-tables.bicep     # 4 custom Log Analytics tables

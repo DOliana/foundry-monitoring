@@ -1,0 +1,49 @@
+{
+    "location": "<YOUR_LOCATION>",
+    "tags": {},
+    "properties": {
+        "dataCollectionEndpointId": "/subscriptions/<YOUR_SUBSCRIPTION_ID>/resourceGroups/<YOUR_RESOURCE_GROUP>/providers/Microsoft.Insights/dataCollectionEndpoints/<YOUR_DCE_NAME>",
+        "streamDeclarations": {
+            "Custom-ModelCatalog_CL": {
+                "columns": [
+                    { "name": "TimeGenerated",          "type": "datetime" },
+                    { "name": "subscriptionId_s",       "type": "string" },
+                    { "name": "subscriptionName_s",     "type": "string" },
+                    { "name": "region_s",               "type": "string" },
+                    { "name": "modelFormat_s",          "type": "string" },
+                    { "name": "modelName_s",            "type": "string" },
+                    { "name": "modelVersion_s",         "type": "string" },
+                    { "name": "lifecycleStatus_s",      "type": "string" },
+                    { "name": "isDefaultVersion_b",     "type": "boolean" },
+                    { "name": "maxCapacity_d",          "type": "real" },
+                    { "name": "fineTune_b",             "type": "boolean" },
+                    { "name": "inference_b",            "type": "boolean" },
+                    { "name": "chatCompletion_b",       "type": "boolean" },
+                    { "name": "completion_b",           "type": "boolean" },
+                    { "name": "embeddings_b",           "type": "boolean" },
+                    { "name": "imageGeneration_b",      "type": "boolean" },
+                    { "name": "deprecationInference_s", "type": "string" },
+                    { "name": "deprecationFineTune_s",  "type": "string" },
+                    { "name": "skuNames_s",             "type": "string" },
+                    { "name": "isDeleted_b",            "type": "boolean" }
+                ]
+            }
+        },
+        "destinations": {
+            "logAnalytics": [
+                {
+                    "workspaceResourceId": "/subscriptions/<YOUR_SUBSCRIPTION_ID>/resourceGroups/<YOUR_RESOURCE_GROUP>/providers/Microsoft.OperationalInsights/workspaces/<YOUR_WORKSPACE_NAME>",
+                    "name": "logAnalytics"
+                }
+            ]
+        },
+        "dataFlows": [
+            {
+                "streams": [ "Custom-ModelCatalog_CL" ],
+                "destinations": [ "logAnalytics" ],
+                "transformKql": "source",
+                "outputStream": "Custom-ModelCatalog_CL"
+            }
+        ]
+    }
+}

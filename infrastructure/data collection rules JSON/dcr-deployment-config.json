@@ -1,0 +1,43 @@
+{
+    "location": "<YOUR_LOCATION>",
+    "tags": {},
+    "properties": {
+        "dataCollectionEndpointId": "/subscriptions/<YOUR_SUBSCRIPTION_ID>/resourceGroups/<YOUR_RESOURCE_GROUP>/providers/Microsoft.Insights/dataCollectionEndpoints/<YOUR_DCE_NAME>",
+        "streamDeclarations": {
+            "Custom-DeploymentConfig_CL": {
+                "columns": [
+                    { "name": "TimeGenerated",       "type": "datetime" },
+                    { "name": "subscriptionId_s",    "type": "string" },
+                    { "name": "subscriptionName_s",  "type": "string" },
+                    { "name": "resourceId_s",         "type": "string" },
+                    { "name": "resourceName_s",       "type": "string" },
+                    { "name": "location_s",           "type": "string" },
+                    { "name": "kind_s",               "type": "string" },
+                    { "name": "deploymentName_s",     "type": "string" },
+                    { "name": "modelName_s",          "type": "string" },
+                    { "name": "modelVersion_s",       "type": "string" },
+                    { "name": "skuName_s",            "type": "string" },
+                    { "name": "skuCapacity_d",        "type": "real" },
+                    { "name": "tpmLimit_d",           "type": "real" },
+                    { "name": "rpmLimit_d",           "type": "real" }
+                ]
+            }
+        },
+        "destinations": {
+            "logAnalytics": [
+                {
+                    "workspaceResourceId": "/subscriptions/<YOUR_SUBSCRIPTION_ID>/resourceGroups/<YOUR_RESOURCE_GROUP>/providers/Microsoft.OperationalInsights/workspaces/<YOUR_WORKSPACE_NAME>",
+                    "name": "logAnalytics"
+                }
+            ]
+        },
+        "dataFlows": [
+            {
+                "streams": [ "Custom-DeploymentConfig_CL" ],
+                "destinations": [ "logAnalytics" ],
+                "transformKql": "source",
+                "outputStream": "Custom-DeploymentConfig_CL"
+            }
+        ]
+    }
+}
