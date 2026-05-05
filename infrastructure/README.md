@@ -96,19 +96,31 @@ No extra setup needed — `local.settings.json` and RBAC are configured by the p
 
 ## Deploy manually (alternative)
 
-```powershell
-# Minimal: create a new workspace, no alerts
-./scripts/Deploy-MonitoringInfra.ps1 `
-    -Prefix "aimon" `
-    -TargetSubscriptionIds @("sub-id-1", "sub-id-2")
+The manual path **does not assign RBAC by default** — it deploys the infrastructure only and leaves the role assignments to a separate admin (typically because the deploying user does not hold User Access Administrator on the target subscriptions, workspace, and DCRs).
 
-# With existing workspace + alerts
+```powershell
+# Minimal: create a new workspace, no alerts, no RBAC
+./scripts/Deploy-MonitoringInfra.ps1 -Prefix "aimon"
+
+# With existing workspace + alerts (still no RBAC)
 ./scripts/Deploy-MonitoringInfra.ps1 `
     -Prefix "aimon" `
     -LogAnalyticsWorkspaceId "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{name}" `
-    -DeployAlerts -AlertEmail "platformteam@contoso.com" `
-    -TargetSubscriptionIds @("sub-id-1", "sub-id-2")
+    -DeployAlerts -AlertEmail "platformteam@contoso.com"
+
+# Same deploy AND assign RBAC in one shot (requires User Access Administrator)
+./scripts/Deploy-MonitoringInfra.ps1 `
+    -Prefix "aimon" `
+    -AssignRbac -TargetSubscriptionIds @("sub-id-1", "sub-id-2")
 ```
+
+After a deploy without `-AssignRbac`, hand the post-deploy outputs (Function App principal ID, workspace ID, the four DCR IDs — all printed by the script) to an admin who runs `./scripts/Assign-MonitoringRbac.ps1` to grant the managed identity access. Until then the functions will run but log authorization errors.
+
+Mandatory parameters:
+
+| Parameter | Description |
+| --- | --- |
+| `-Prefix` | Naming prefix (lowercase, 2–8 chars). Used to name all resources. |
 
 Optional parameters (with defaults):
 
@@ -124,7 +136,8 @@ Optional parameters (with defaults):
 | `-AlertEmail` | *(empty)* | Required when `-DeployAlerts` is set |
 | `-Environment` | `DEV` | Environment tag |
 | `-MaxParallelSubs` | `5` | Concurrency limit |
-| `-SkipRbac` | `$false` | Skip RBAC step (for re-deploys, or hand off to a separate admin) |
+| `-AssignRbac` | `$false` | Switch — also run `Assign-MonitoringRbac.ps1` after the Bicep deploy. Requires `-TargetSubscriptionIds` and User Access Administrator on each target sub, the workspace, and each DCR. |
+| `-TargetSubscriptionIds` | *(empty)* | Subscription IDs to grant the Function App MI access to. Required only when `-AssignRbac` is set. |
 
 Every Bicep parameter is exposed as a `Deploy-MonitoringInfra.ps1` switch — the manual path does not require any interactive prompts.
 

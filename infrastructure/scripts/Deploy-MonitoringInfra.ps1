@@ -1,15 +1,15 @@
 <#
 .SYNOPSIS
-    Deploys the AI Foundry monitoring infrastructure and assigns RBAC roles
-    for the Function App's managed identity.
+    Deploys the AI Foundry monitoring infrastructure. RBAC for the Function App's
+    managed identity is opt-in (off by default) so a separate admin can run it later.
 
 .DESCRIPTION
     This script:
       1. Creates the resource group (if it doesn't exist)
       2. Deploys main.bicep with the provided parameters
-      3. Reads the deployment outputs (principal ID, DCR resource IDs)
-      4. Calls Assign-MonitoringRbac.ps1 to grant the managed identity
-         the required roles across target subscriptions
+      3. (Only when -AssignRbac is supplied) reads the deployment outputs
+         (principal ID, DCR resource IDs) and calls Assign-MonitoringRbac.ps1
+         to grant the managed identity the required roles across target subscriptions
 
 .PARAMETER ResourceGroupName
     Name of the resource group to create/use. Default: rg-ai-monitoring
@@ -29,7 +29,8 @@
     Optional. Email address for alert notifications. Required when -DeployAlerts is supplied.
 
 .PARAMETER TargetSubscriptionIds
-    Mandatory. Array of subscription IDs the monitoring functions will scan.
+    Optional. Array of subscription IDs to grant the Function App's managed identity
+    access to. Only required when -AssignRbac is supplied.
 
 .PARAMETER Prefix
     Mandatory. Naming prefix (lowercase, 2-8 chars).
@@ -40,8 +41,13 @@
 .PARAMETER MaxParallelSubs
     Optional. Concurrency limit. Default: 5
 
-.PARAMETER SkipRbac
-    Optional. Skip the RBAC assignment step (useful for re-deploys where RBAC is already set).
+.PARAMETER AssignRbac
+    Optional switch. When set, runs Assign-MonitoringRbac.ps1 to grant the Function App's
+    managed identity Reader / Monitoring Reader / Cognitive Services Usages Reader on each
+    target subscription, Log Analytics Data Reader on the workspace, and Monitoring Metrics
+    Publisher on each DCR. Requires -TargetSubscriptionIds and User Access Administrator
+    (or Owner) on each of those scopes. If omitted, hand off Assign-MonitoringRbac.ps1 to
+    a separate admin after deployment.
 
 .PARAMETER WhatIf
     Preview changes without applying them.
@@ -78,8 +84,7 @@ param(
 
     [string]$AlertEmail = '',
 
-    [Parameter(Mandatory)]
-    [string[]]$TargetSubscriptionIds,
+    [string[]]$TargetSubscriptionIds = @(),
 
     [Parameter(Mandatory)]
     [ValidateLength(2, 8)]
@@ -90,7 +95,7 @@ param(
 
     [int]$MaxParallelSubs = 5,
 
-    [switch]$SkipRbac
+    [switch]$AssignRbac
 )
 
 Set-StrictMode -Version Latest
@@ -98,6 +103,10 @@ $ErrorActionPreference = 'Stop'
 
 if ($DeployAlerts -and -not $AlertEmail) {
     throw '-AlertEmail is required when -DeployAlerts is set.'
+}
+
+if ($AssignRbac -and -not $TargetSubscriptionIds.Count) {
+    throw '-TargetSubscriptionIds is required when -AssignRbac is set.'
 }
 
 $scriptDir = $PSScriptRoot
@@ -134,14 +143,15 @@ $deployArgs = @(
     "environment=$Environment"
     "maxParallelSubs=$MaxParallelSubs"
     "deployAlerts=$([string]([bool]$DeployAlerts).ToString().ToLower())"
-    '--output', 'json'
+    "workspaceRetentionDays=$WorkspaceRetentionDays"
+    "workspaceSku=$WorkspaceSku"
 )
 
 if ($LogAnalyticsWorkspaceId) { $deployArgs += "logAnalyticsWorkspaceId=$LogAnalyticsWorkspaceId" }
 if ($WorkspaceName)           { $deployArgs += "workspaceName=$WorkspaceName" }
-$deployArgs += "workspaceRetentionDays=$WorkspaceRetentionDays"
-$deployArgs += "workspaceSku=$WorkspaceSku"
 if ($AlertEmail)              { $deployArgs += "alertEmail=$AlertEmail" }
+
+$deployArgs += @('--output', 'json')
 
 if ($PSCmdlet.ShouldProcess($bicepFile, 'Deploy Bicep template')) {
     Write-Host "  Deploying main.bicep (deployment: $deploymentName)..."
@@ -158,11 +168,14 @@ if ($PSCmdlet.ShouldProcess($bicepFile, 'Deploy Bicep template')) {
     return
 }
 
-# ── Step 3: Assign RBAC ──────────────────────────────────────────────────────
+# ── Step 3: Assign RBAC (opt-in) ─────────────────────────────────────────────
 
-if ($SkipRbac) {
+if (-not $AssignRbac) {
     Write-Host "`n=== Step 3/3: RBAC assignment (SKIPPED) ===" -ForegroundColor Yellow
-    Write-Host "  Use -SkipRbac:`$false or run Assign-MonitoringRbac.ps1 manually."
+    Write-Host "  RBAC is opt-in for manual deploys. The Function App's managed identity will"
+    Write-Host "  not be able to read target subscriptions or write to the DCRs until an admin runs"
+    Write-Host "  Assign-MonitoringRbac.ps1. Re-run this script with -AssignRbac (and"
+    Write-Host "  -TargetSubscriptionIds) to do it now."
 } else {
     Write-Host "`n=== Step 3/3: RBAC assignment ===" -ForegroundColor Cyan
 
