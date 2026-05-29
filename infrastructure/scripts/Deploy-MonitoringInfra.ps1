@@ -41,6 +41,11 @@
 .PARAMETER MaxParallelSubs
     Optional. Concurrency limit. Default: 5
 
+.PARAMETER Tags
+    Optional. Hashtable of additional tags applied to every deployed resource,
+    e.g. -Tags @{ CostCenter = '1234'; Owner = 'platform-team' }. Custom tags
+    override the built-in Environment/Project tags on key collision.
+
 .PARAMETER AssignRbac
     Optional switch. When set, runs Assign-MonitoringRbac.ps1 to grant the Function App's
     managed identity Reader / Monitoring Reader / Cognitive Services Usages Reader on each
@@ -94,6 +99,8 @@ param(
     [string]$Environment = 'DEV',
 
     [int]$MaxParallelSubs = 5,
+
+    [hashtable]$Tags = @{},
 
     [switch]$AssignRbac
 )
@@ -150,6 +157,7 @@ $deployArgs = @(
 if ($LogAnalyticsWorkspaceId) { $deployArgs += "logAnalyticsWorkspaceId=$LogAnalyticsWorkspaceId" }
 if ($WorkspaceName)           { $deployArgs += "workspaceName=$WorkspaceName" }
 if ($AlertEmail)              { $deployArgs += "alertEmail=$AlertEmail" }
+if ($Tags.Count -gt 0)        { $deployArgs += "customTags=$($Tags | ConvertTo-Json -Compress -Depth 5)" }
 
 $deployArgs += @('--output', 'json')
 

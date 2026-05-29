@@ -164,3 +164,25 @@ if (-not $deployAlertsExists) {
     Write-Host "  AZURE_DEPLOY_ALERTS = $deployAlerts" -ForegroundColor DarkGray
 }
 
+# ── Custom tags (any azd env var prefixed with TAG_) ─────────────────────────
+# Collect every TAG_<Key>=<Value> env var, strip the TAG_ prefix, and pass the
+# result to Bicep as a single JSON object via AZURE_CUSTOM_TAGS. Each entry
+# becomes a tag applied to every deployed resource.
+Write-Host ""
+$customTags = [ordered]@{}
+foreach ($line in (azd env get-values)) {
+    if ($line -match '^TAG_(.+?)="?(.*?)"?$') {
+        $customTags[$Matches[1]] = $Matches[2]
+    }
+}
+
+if ($customTags.Count -gt 0) {
+    $customTagsJson = ($customTags | ConvertTo-Json -Compress -Depth 5)
+    azd env set AZURE_CUSTOM_TAGS $customTagsJson
+    Write-Host "  Custom tags applied to all resources: $customTagsJson" -ForegroundColor Green
+} else {
+    azd env set AZURE_CUSTOM_TAGS '{}'
+    Write-Host "  No TAG_* environment variables found — no custom tags applied." -ForegroundColor DarkGray
+    Write-Host "  Tip: 'azd env set TAG_CostCenter 1234' adds CostCenter=1234 to every resource." -ForegroundColor DarkGray
+}
+

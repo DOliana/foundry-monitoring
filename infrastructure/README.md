@@ -77,6 +77,7 @@ azd env set AZURE_TARGET_SUBSCRIPTION_IDS "sub-id-1,sub-id-2"
 azd env set AZURE_LOG_ANALYTICS_WORKSPACE_ID "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{name}"
 azd env set AZURE_DEPLOY_ALERTS true
 azd env set AZURE_ALERT_EMAIL "platformteam@contoso.com"
+azd env set TAG_CostCenter "1234"   # custom resource tag [^custom-tags]
 ```
 
 `azd up` runs `azd provision` + `azd deploy`. The post-provision hook automatically:
@@ -136,6 +137,7 @@ Optional parameters (with defaults):
 | `-AlertEmail` | *(empty)* | Required when `-DeployAlerts` is set |
 | `-Environment` | `DEV` | Environment tag |
 | `-MaxParallelSubs` | `5` | Concurrency limit |
+| `-Tags` | `@{}` | Hashtable of extra tags applied to every resource, e.g. `-Tags @{ CostCenter = '1234' }`. See the custom-tags note.[^custom-tags] |
 | `-AssignRbac` | `$false` | Switch — also run `Assign-MonitoringRbac.ps1` after the Bicep deploy. Requires `-TargetSubscriptionIds` and User Access Administrator on each target sub, the workspace, and each DCR. |
 | `-TargetSubscriptionIds` | *(empty)* | Subscription IDs to grant the Function App MI access to. Required only when `-AssignRbac` is set. |
 
@@ -229,3 +231,7 @@ infrastructure/
 | `completionTokens_d` | real | Output tokens generated |
 | `totalTokens_d` | real | Total tokens |
 | `granularity_s` | string | ISO 8601 aggregation interval (e.g. PT5M) |
+
+---
+
+[^custom-tags]: **Custom resource tags.** Any azd environment variable prefixed with `TAG_` is converted into a tag applied to **every** deployed resource — the prefix is stripped and the remainder becomes the tag name. For example, `azd env set TAG_CostCenter 1234` adds the tag `CostCenter=1234`, and `azd env set TAG_Owner "platform-team"` adds `Owner=platform-team`. The pre-provision hook collects all `TAG_*` variables into the `customTags` Bicep parameter (a JSON object) which is merged with the built-in `Environment` and `Project` tags; custom tags win on key collision. For the manual deploy path, pass the equivalent hashtable via `-Tags`, e.g. `-Tags @{ CostCenter = '1234'; Owner = 'platform-team' }`.

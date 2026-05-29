@@ -36,6 +36,9 @@
 //     workspaceSku             — pricing SKU for the new workspace (default: PerGB2018).
 //     deployAlerts             — deploy Action Group + scheduled-query rule (default: false)
 //     alertEmail               — email recipient (required when deployAlerts is true)
+//     customTags               — object of extra tags applied to every resource.
+//                                With azd, populated automatically from TAG_* env vars
+//                                (e.g. azd env set TAG_CostCenter 1234 ⇒ tag CostCenter=1234).
 
 targetScope = 'resourceGroup'
 
@@ -81,12 +84,20 @@ param deployAlerts bool = false
 @description('Optional. Email address for alert notifications. Required only when deployAlerts is true.')
 param alertEmail string = ''
 
+// ── Custom tags ──────────────────────────────────────────────────────────────
+
+@description('Optional. Additional tags applied to every deployed resource. When deploying with azd this is populated automatically from any azd environment variable prefixed with TAG_ (e.g. TAG_CostCenter=1234 becomes the tag CostCenter=1234). Custom tags override the built-in Environment/Project tags on key collision. Default: {} (none).')
+param customTags object = {}
+
 // ── Computed ─────────────────────────────────────────────────────────────────
 
-var tags = {
-  Environment: environment
-  Project: 'AI-Foundry-Monitoring'
-}
+var tags = union(
+  {
+    Environment: environment
+    Project: 'AI-Foundry-Monitoring'
+  },
+  customTags
+)
 
 var createWorkspace = empty(logAnalyticsWorkspaceId)
 
