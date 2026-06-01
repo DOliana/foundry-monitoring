@@ -3,7 +3,8 @@
 import os
 from datetime import timedelta
 
-# Must match the Log Analytics workspace interactive retention setting.
+# Environment override for the Log Analytics interactive retention window.
+# Must match the workspace retention setting used for queried tables.
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "30"))
 
 # Used as the timespan for _get_last_snapshot queries so they cover the full

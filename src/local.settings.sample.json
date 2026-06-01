@@ -10,6 +10,13 @@
     "DCR_DEPLOYMENT_CONFIG_IMMUTABLE_ID": "dcr-<immutable-id>",
     "DCR_TOKEN_USAGE_IMMUTABLE_ID": "dcr-<immutable-id>",
     "DCR_MODEL_CATALOG_IMMUTABLE_ID": "dcr-<immutable-id>",
+    "DEPLOYMENT_CONFIG_STREAM_NAME": "Custom-DeploymentConfig_CL",
+    "DEPLOYMENT_CONFIG_TABLE_NAME": "DeploymentConfig_CL",
+    "MODEL_CATALOG_STREAM_NAME": "Custom-ModelCatalog_CL",
+    "MODEL_CATALOG_TABLE_NAME": "ModelCatalog_CL",
+    "QUOTA_SNAPSHOT_STREAM_NAME": "Custom-QuotaSnapshot_CL",
+    "QUOTA_SNAPSHOT_TABLE_NAME": "QuotaSnapshot_CL",
+    "TOKEN_USAGE_STREAM_NAME": "Custom-TokenUsage_CL",
     "WATERMARK_TABLE_NAME": "watermarks",
     "WATERMARK_STORAGE_ENDPOINT": "https://<storage-account-name>.table.core.windows.net/",
     "MAX_PARALLEL_SUBS": "5"

@@ -15,9 +15,13 @@ from shared.watermark import mark_failed, mark_success, read_watermark
 
 logger = logging.getLogger(__name__)
 
+# Immutable DCR ID used by the Logs Ingestion client for this payload shape.
 _DCR_RULE_ID = os.environ.get("DCR_TOKEN_USAGE_IMMUTABLE_ID", "")
-_STREAM_NAME = "Custom-TokenUsage_CL"
+# Destination DCR stream name used when writing rows.
+_STREAM_NAME = os.environ.get("TOKEN_USAGE_STREAM_NAME", "Custom-TokenUsage_CL")
+# Watermark partition key in Azure Table Storage (not a DCR or LA stream name).
 _WATERMARK_STREAM = "token_usage"
+# Max number of subscriptions processed concurrently in one function run.
 _MAX_PARALLEL = int(os.environ.get("MAX_PARALLEL_SUBS", "5"))
 _COLLECTION_DELAY = timedelta(minutes=30)
 _DEFAULT_LOOKBACK = timedelta(hours=24)
@@ -34,6 +38,7 @@ def _parse_iso8601_duration(value: str) -> timedelta:
     return timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
 
+# Metrics API interval (ISO 8601) used when querying token usage.
 _GRANULARITY_ISO = os.environ.get("METRICS_GRANULARITY", "PT5M")
 _GRANULARITY = _parse_iso8601_duration(_GRANULARITY_ISO)
 

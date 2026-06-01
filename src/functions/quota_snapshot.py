@@ -21,10 +21,21 @@ from shared.watermark import (
 
 logger = logging.getLogger(__name__)
 
+# Immutable DCR ID used by the Logs Ingestion client for this payload shape.
 _DCR_RULE_ID = os.environ.get("DCR_QUOTA_SNAPSHOT_IMMUTABLE_ID", "")
-_STREAM_NAME = "Custom-QuotaSnapshot_CL"
+# Destination DCR stream name used when writing rows.
+_STREAM_NAME = os.environ.get("QUOTA_SNAPSHOT_STREAM_NAME", "Custom-QuotaSnapshot_CL")
+# KQL queries read from the LA table; override explicitly when stream/table naming
+# does not follow the default Custom-X_CL -> X_CL convention.
+_TABLE_NAME = os.environ.get(
+    "QUOTA_SNAPSHOT_TABLE_NAME",
+    _STREAM_NAME[7:] if _STREAM_NAME.startswith("Custom-") else _STREAM_NAME,
+)
+# Watermark partition key in Azure Table Storage (not a DCR or LA stream name).
 _WATERMARK_STREAM = "quota_snapshot"
+# Max number of subscriptions processed concurrently in one function run.
 _MAX_PARALLEL = int(os.environ.get("MAX_PARALLEL_SUBS", "5"))
+# Workspace used for snapshot lookups to perform change detection.
 _WORKSPACE_ID = os.environ.get("LOG_ANALYTICS_WORKSPACE_ID", "")
 
 _COMPARE_FIELDS = [
@@ -46,7 +57,8 @@ def _get_last_snapshot(sub_id: str) -> dict[tuple[str, str], dict]:
     client = LogsQueryClient(credential=get_credential())
     logger.debug("Querying last quota snapshot for sub %s", sub_id)
     query = (
-        "QuotaSnapshot_CL"
+        _TABLE_NAME
+        +
         " | where subscriptionId_s == @sub_id"
         " | summarize arg_max(TimeGenerated, *) by region_s, model_s"
     )
@@ -60,7 +72,7 @@ def _get_last_snapshot(sub_id: str) -> dict[tuple[str, str], dict]:
 
     snapshot: dict[tuple[str, str], dict] = {}
     if result.status == LogsQueryStatus.SUCCESS and result.tables:
-        columns = [c.name for c in result.tables[0].columns]
+        columns = [c if isinstance(c, str) else c.name for c in result.tables[0].columns]
         for row in result.tables[0].rows:
             row_dict = dict(zip(columns, row))
             key = (
