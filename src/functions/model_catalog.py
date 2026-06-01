@@ -11,7 +11,7 @@ from requests.exceptions import HTTPError
 
 from shared.arm import list_models, list_instances, list_subscriptions
 from shared.clients import get_credential, get_ingestion_client
-from shared.retention import REFRESH_THRESHOLD, RETENTION_PERIOD
+from shared.retention import REFRESH_THRESHOLD, RETENTION_PERIOD, fields_match
 from shared.watermark import mark_failed, mark_success, read_watermark
 
 logger = logging.getLogger(__name__)
@@ -148,13 +148,13 @@ def _collect(sub: dict, now: datetime) -> list[dict]:
                 "isDeleted_b": False,
             }
 
-            # Change detection: skip if identical to the last snapshot AND still fresh
+            # Change detection: skip if identical to the last snapshot AND still fresh.
+            # fields_match normalizes Log Analytics None/numeric-type quirks so an
+            # unchanged model isn't falsely re-ingested every run.
             key = (location, row["modelName_s"], row["modelVersion_s"])
             current_keys.add(key)
             prev = last_snapshot.get(key)
-            if prev is not None and all(
-                row.get(f) == prev.get(f) for f in _COMPARE_FIELDS
-            ):
+            if prev is not None and fields_match(row, prev, _COMPARE_FIELDS):
                 prev_age = now - prev["TimeGenerated"]
                 if prev_age < REFRESH_THRESHOLD:
                     logger.debug("Skipping unchanged model %s/%s/%s", *key)

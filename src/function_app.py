@@ -7,6 +7,7 @@ app = func.FunctionApp()
 
 
 @app.timer_trigger(schedule="0 20 * * * *", arg_name="timer", run_on_startup=False)
+# @app.timer_trigger(schedule="0 */5 * * * *", arg_name="timer", run_on_startup=True)
 async def fn_quota_snapshot(timer: func.TimerRequest) -> None:
     """Collect quota snapshots hourly (at :20, 15-min delay for finalization)."""
     if timer.past_due:
@@ -15,6 +16,7 @@ async def fn_quota_snapshot(timer: func.TimerRequest) -> None:
 
 
 @app.timer_trigger(schedule="0 5 * * * *", arg_name="timer", run_on_startup=False)
+# @app.timer_trigger(schedule="0 */5 * * * *", arg_name="timer", run_on_startup=True)
 async def fn_deployment_config(timer: func.TimerRequest) -> None:
     """Collect deployment configurations hourly (at :05)."""
     if timer.past_due:
@@ -23,6 +25,7 @@ async def fn_deployment_config(timer: func.TimerRequest) -> None:
 
 
 @app.timer_trigger(schedule="0 35 * * * *", arg_name="timer", run_on_startup=False)
+# @app.timer_trigger(schedule="0 */5 * * * *", arg_name="timer", run_on_startup=True)
 async def fn_token_usage(timer: func.TimerRequest) -> None:
     """Collect token usage metrics hourly (at :35, 30-min delay for finalization)."""
     if timer.past_due:
@@ -31,6 +34,7 @@ async def fn_token_usage(timer: func.TimerRequest) -> None:
 
 
 @app.timer_trigger(schedule="0 0 6 * * *", arg_name="timer", run_on_startup=False)
+# @app.timer_trigger(schedule="0 */5 * * * *", arg_name="timer", run_on_startup=True)
 async def fn_model_catalog(timer: func.TimerRequest) -> None:
     """Collect available models from the model catalog daily (at 06:00 UTC)."""
     if timer.past_due:
