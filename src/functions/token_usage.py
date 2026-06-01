@@ -204,6 +204,9 @@ async def run() -> None:
                     mark_success(_WATERMARK_STREAM, sub_id, window_end)
                     return "skipped"
             except Exception:
+                logger.exception(
+                    "Sub %s: token usage collection/ingestion failed", sub_id
+                )
                 mark_failed(_WATERMARK_STREAM, sub_id)
                 raise
 

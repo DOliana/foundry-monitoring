@@ -56,10 +56,11 @@ def _get_last_snapshot(sub_id: str) -> dict[tuple[str, str], dict]:
 
     client = LogsQueryClient(credential=get_credential())
     logger.debug("Querying last quota snapshot for sub %s", sub_id)
+    sub_id_escaped = sub_id.replace("'", "''")
     query = (
         _TABLE_NAME
         +
-        " | where subscriptionId_s == @sub_id"
+        f" | where subscriptionId_s == '{sub_id_escaped}'"
         " | summarize arg_max(TimeGenerated, *) by region_s, model_s"
     )
     result = client.query_workspace(
@@ -67,7 +68,6 @@ def _get_last_snapshot(sub_id: str) -> dict[tuple[str, str], dict]:
         query,
         timespan=RETENTION_PERIOD,
         additional_workspaces=None,
-        query_parameters={"sub_id": sub_id},
     )
 
     snapshot: dict[tuple[str, str], dict] = {}
@@ -240,6 +240,9 @@ async def run() -> None:
                     mark_success(_WATERMARK_STREAM, sub_id, now)
                     return "skipped"
             except Exception:
+                logger.exception(
+                    "Sub %s: quota snapshot collection/ingestion failed", sub_id
+                )
                 mark_failed(_WATERMARK_STREAM, sub_id)
                 raise
 
